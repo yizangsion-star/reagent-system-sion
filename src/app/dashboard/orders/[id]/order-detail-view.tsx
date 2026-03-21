@@ -31,13 +31,22 @@ export default function OrderDetailView({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState(false);
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "";
+    try {
+      return dateStr.split("T")[0];
+    } catch {
+      return "";
+    }
+  };
+
   const [formData, setFormData] = useState({
     reagentName: order.reagentName,
     type: order.type,
-    orderDate: order.orderDate.split("T")[0],
+    orderDate: formatDate(order.orderDate),
     price: String(order.price),
     invoiceNumber: order.invoiceNumber || "",
-    invoiceDate: order.invoiceDate ? order.invoiceDate.split("T")[0] : "",
+    invoiceDate: formatDate(order.invoiceDate),
   });
 
   const handleSave = async () => {
