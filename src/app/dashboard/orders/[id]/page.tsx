@@ -6,14 +6,13 @@ import OrderDetailView from "./order-detail-view";
 // 强制动态渲染
 export const dynamic = "force-dynamic";
 export const dynamicParams = true;
+export const revalidate = 0;
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
-
-export default async function OrderDetailPage({ params }: PageProps) {
-  const resolvedParams = await params;
-  const id = resolvedParams.id;
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const session = await auth();
 
   if (!session) {
@@ -29,7 +28,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
   }
 
   const order = await prisma.reagentOrder.findUnique({
-    where: { id },
+    where: { id: params.id },
     include: { user: true },
   });
 
