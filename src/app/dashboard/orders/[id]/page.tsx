@@ -3,11 +3,17 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prismadb";
 import OrderDetailView from "./order-detail-view";
 
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+// 强制动态渲染
+export const dynamic = "force-dynamic";
+export const dynamicParams = true;
+
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function OrderDetailPage({ params }: PageProps) {
+  const resolvedParams = await params;
+  const id = resolvedParams.id;
   const session = await auth();
 
   if (!session) {
@@ -23,7 +29,7 @@ export default async function OrderDetailPage({
   }
 
   const order = await prisma.reagentOrder.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { user: true },
   });
 
