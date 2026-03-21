@@ -8,11 +8,11 @@ export const dynamic = "force-dynamic";
 export const dynamicParams = true;
 export const revalidate = 0;
 
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function OrderDetailPage({ params }: PageProps) {
   const session = await auth();
 
   if (!session) {
@@ -27,8 +27,10 @@ export default async function OrderDetailPage({
     redirect("/pending");
   }
 
+  const { id } = await params;
+
   const order = await prisma.reagentOrder.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { user: true },
   });
 
