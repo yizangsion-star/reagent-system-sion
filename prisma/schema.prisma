@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户角色枚举
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+// 试剂类型枚举
+enum ReagentType {
+  PUBLIC_REAGENT    // 公共试剂
+  PERSONAL_REAGENT  // 个人试剂
+}
+
+// 用户模型
+model User {
+  id            String          @id @default(cuid())
+  username      String          @unique
+  password      String          // 加密后的密码
+  role          Role            @default(STUDENT)
+  isApproved    Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  reagentOrders ReagentOrder[]
+
+  @@index([username])
+  @@index([isApproved])
+}
+
+// 试剂订购与发票模型
+model ReagentOrder {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reagentName   String        // 试剂名称/规格
+  type          ReagentType
+  orderDate     DateTime      // 订购时间
+  price         Decimal       @db.Decimal(10, 2) // 价格
+  invoiceNumber String?       // 发票号（可选）
+  invoiceDate   DateTime?     // 开发票时间（可选）
+  isVerified    Boolean       @default(false)   // 是否已核查
+  isReimbursed  Boolean       @default(false)   // 是否已报销
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([isVerified])
+  @@index([isReimbursed])
+  @@index([orderDate])
+}
