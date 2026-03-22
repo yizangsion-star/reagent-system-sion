@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Session } from "next-auth";
-import { signOut } from "next-auth/react";
+import { Navbar } from "@/components/navbar";
 
 interface OrderGroup {
   id: string;
@@ -162,37 +162,11 @@ export default function DashboardView({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 顶部导航栏 */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">试剂订购管理</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              当前用户：{(session.user as any)?.username} ({userRole === "ADMIN" ? "管理员" : "学生"})
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            {userRole === "ADMIN" && (
-              <a
-                href="/admin/users"
-                className="text-sm text-indigo-600 hover:text-indigo-500"
-              >
-                成员管理
-              </a>
-            )}
-            <a
-              href="/api/auth/signout"
-              className="text-sm text-red-600 hover:text-red-500"
-              onClick={(e) => {
-                e.preventDefault();
-                signOut({ callbackUrl: "/login" });
-              }}
-            >
-              退出
-            </a>
-          </div>
-        </div>
-      </div>
+      {/* 全局导航栏 */}
+      <Navbar
+        username={(session.user as any)?.username}
+        userRole={userRole}
+      />
 
       {/* 主内容区 */}
       <div className="max-w-7xl mx-auto px-6 py-6">
