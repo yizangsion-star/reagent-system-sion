@@ -273,7 +273,7 @@ export default function DashboardView({
                 {/* 卡片头部 */}
                 <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
                   <div>
-                    <h3 className="font-semibold text-lg">{group.supplierName}</h3>
+                    <h3 className="font-semibold text-lg text-gray-900">{group.supplierName}</h3>
                     <p className="text-sm text-gray-500">
                       创建时间：{formatDate(group.createdAt)}
                     </p>
