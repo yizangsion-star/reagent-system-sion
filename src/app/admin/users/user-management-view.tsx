@@ -16,6 +16,7 @@ export default function UserManagementView({ users }: { users: User[] }) {
   const [userList, setUserList] = useState(users);
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const handleApprove = async (userId: string) => {
     setLoading(userId);
@@ -62,6 +63,28 @@ export default function UserManagementView({ users }: { users: User[] }) {
       }
     } catch (err) {
       setMessage("操作失败，请稍后重试");
+    } finally {
+      setLoading(null);
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handleDelete = async (userId: string) => {
+    setLoading(userId);
+    try {
+      const res = await fetch(`/api/admin/users?userId=${userId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserList(userList.filter((u) => u.id !== userId));
+        setMessage("用户已删除");
+        setDeleteConfirm(null);
+      } else {
+        setMessage(data.error || "删除失败");
+      }
+    } catch (err) {
+      setMessage("删除失败，请稍后重试");
     } finally {
       setLoading(null);
       setTimeout(() => setMessage(""), 3000);
@@ -177,6 +200,31 @@ export default function UserManagementView({ users }: { users: User[] }) {
                           ? "取消管理员"
                           : "设为管理员"}
                       </button>
+                      {deleteConfirm === user.id ? (
+                        <>
+                          <button
+                            onClick={() => handleDelete(user.id)}
+                            disabled={loading === user.id}
+                            className="text-red-600 hover:text-red-900 disabled:opacity-50 font-bold"
+                          >
+                            {loading === user.id ? "删除中..." : "确认删除"}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(null)}
+                            disabled={loading === user.id}
+                            className="text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                          >
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirm(user.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          删除
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
