@@ -65,6 +65,9 @@ model OrderGroup {
   // 关联的耗材明细
   orderItems    OrderItem[]
 
+  // 联合唯一约束：同一用户在同一个月对同一供应商只能有一个卡片
+  @@unique([userId, month, supplierName])
+  
   @@index([userId])
   @@index([month])
   @@index([supplierName])

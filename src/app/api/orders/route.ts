@@ -77,7 +77,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/orders - 创建新的供应商子项（订单组）
+// POST /api/orders - 创建或更新供应商子项（订单组）
+// 使用 upsert 实现智能创建/添加：同一用户同月同供应商只有一个卡片
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -120,29 +121,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 创建订单组及耗材明细
-    const orderGroup = await prisma.orderGroup.create({
-      data: {
+    // 使用 upsert 实现智能创建/更新
+    // 如果该用户在该月份已有该供应商的卡片，则更新；否则创建新卡片
+    const orderGroup = await prisma.orderGroup.upsert({
+      where: {
+        userId_month_supplierName: {
+          userId: user.id,
+          month,
+          supplierName,
+        },
+      },
+      update: {
+        // 如果提供了发票信息，则更新
+        ...(invoiceNumber !== undefined && { invoiceNumber: invoiceNumber || null }),
+        ...(invoiceDate !== undefined && { invoiceDate: invoiceDate ? new Date(invoiceDate) : null }),
+      },
+      create: {
         userId: user.id,
         month,
         supplierName,
         invoiceNumber: invoiceNumber || null,
         invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
-        orderItems: orderItems && orderItems.length > 0 ? {
-          create: orderItems.map((item: any) => ({
-            reagentName: item.reagentName,
-            type: item.type,
-            price: parseFloat(item.price),
-            orderDate: item.orderDate ? new Date(item.orderDate) : new Date(),
-          }))
-        } : undefined,
       },
+    });
+
+    // 创建耗材明细（如果有）
+    if (orderItems && orderItems.length > 0) {
+      await prisma.orderItem.createMany({
+        data: orderItems.map((item: any) => ({
+          orderGroupId: orderGroup.id,
+          reagentName: item.reagentName,
+          type: item.type || "PUBLIC_REAGENT",
+          price: parseFloat(item.price) || 0,
+          orderDate: item.orderDate ? new Date(item.orderDate) : new Date(),
+        })),
+      });
+    }
+
+    // 返回包含明细的完整订单组
+    const result = await prisma.orderGroup.findUnique({
+      where: { id: orderGroup.id },
       include: {
         orderItems: true,
       },
     });
 
-    return NextResponse.json(orderGroup, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("创建订单错误:", error);
     return NextResponse.json(

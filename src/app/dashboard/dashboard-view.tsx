@@ -52,7 +52,12 @@ export default function DashboardView({
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [orderGroups, setOrderGroups] = useState<OrderGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 弹窗状态
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<OrderGroup | null>(null);
 
   // 获取当前年月作为默认月份
   const getCurrentMonth = () => {
@@ -147,7 +152,7 @@ export default function DashboardView({
 
   // 删除订单组
   const deleteOrderGroup = async (groupId: string) => {
-    if (!confirm("确定要删除这个供应商订单组吗？")) return;
+    if (!confirm("确定要删除这个供应商订单组吗？此操作会删除该供应商的所有购买记录。")) return;
     try {
       const res = await fetch(`/api/orders/${groupId}`, {
         method: "DELETE",
@@ -160,6 +165,18 @@ export default function DashboardView({
     }
   };
 
+  // 打开添加明细弹窗
+  const openAddItemModal = (group: OrderGroup) => {
+    setSelectedGroup(group);
+    setShowAddItemModal(true);
+  };
+
+  // 打开填写发票弹窗
+  const openInvoiceModal = (group: OrderGroup) => {
+    setSelectedGroup(group);
+    setShowInvoiceModal(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 全局导航栏 */}
@@ -169,10 +186,10 @@ export default function DashboardView({
       />
 
       {/* 主内容区 */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* 过滤器 */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 items-end">
             {/* 月份选择器 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -217,14 +234,11 @@ export default function DashboardView({
 
             {/* 新增供应商按钮 */}
             <div className="ml-auto">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                &nbsp;
-              </label>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
               >
-                + 新增供应商
+                + 新增供应商/添加明细
               </button>
             </div>
           </div>
@@ -234,153 +248,75 @@ export default function DashboardView({
         {loading ? (
           <div className="text-center py-12 text-gray-500">加载中...</div>
         ) : orderGroups.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            暂无订单数据，点击「新增供应商」开始录入
+          <div className="text-center py-12 text-gray-500 bg-white rounded-lg shadow">
+            <svg className="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-lg font-medium text-gray-900 mb-1">暂无订单数据</p>
+            <p className="text-gray-500">点击「新增供应商」开始录入试剂购买记录</p>
           </div>
         ) : (
           <div className="grid gap-6">
             {orderGroups.map((group) => (
-              <div
+              <SupplierCard
                 key={group.id}
-                className="bg-white rounded-lg shadow border overflow-hidden"
-              >
-                {/* 卡片头部 */}
-                <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-900">{group.supplierName}</h3>
-                    <p className="text-sm text-gray-500">
-                      创建时间：{formatDate(group.createdAt)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {/* 状态徽章 */}
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        group.isVerified
-                          ? "bg-green-100 text-green-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}>
-                        {group.isVerified ? "已核查" : "待核查"}
-                      </span>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        group.isReimbursed
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}>
-                        {group.isReimbursed ? "已报销" : "未报销"}
-                      </span>
-                    </div>
-                    {/* 管理员操作按钮 */}
-                    {userRole === "ADMIN" && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => toggleVerified(group.id, group.isVerified)}
-                          className={`px-3 py-1 rounded text-sm ${
-                            group.isVerified
-                              ? "bg-gray-200 hover:bg-gray-300"
-                              : "bg-green-600 text-white hover:bg-green-700"
-                          }`}
-                        >
-                          确认核查
-                        </button>
-                        <button
-                          onClick={() => toggleReimbursed(group.id, group.isReimbursed)}
-                          className={`px-3 py-1 rounded text-sm ${
-                            group.isReimbursed
-                              ? "bg-gray-200 hover:bg-gray-300"
-                              : "bg-blue-600 text-white hover:bg-blue-700"
-                          }`}
-                        >
-                          确认报销
-                        </button>
-                      </div>
-                    )}
-                    {/* 删除按钮 */}
-                    <button
-                      onClick={() => deleteOrderGroup(group.id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-
-                {/* 耗材明细表格 */}
-                <div className="p-4">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left text-sm text-gray-600 border-b">
-                        <th className="pb-2 font-medium">试剂名称</th>
-                        <th className="pb-2 font-medium">类型</th>
-                        <th className="pb-2 font-medium">订购日期</th>
-                        <th className="pb-2 font-medium text-right">价格</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.orderItems.map((item) => (
-                        <tr key={item.id} className="border-b last:border-0">
-                          <td className="py-2 text-gray-900">{item.reagentName}</td>
-                          <td className="py-2">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              item.type === "PUBLIC_REAGENT"
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-orange-100 text-orange-800"
-                            }`}>
-                              {item.type === "PUBLIC_REAGENT" ? "公共试剂" : "个人试剂"}
-                            </span>
-                          </td>
-                          <td className="py-2 text-sm text-gray-600">
-                            {formatDate(item.orderDate)}
-                          </td>
-                          <td className="py-2 text-right font-medium text-gray-900">
-                            ¥{item.price.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-gray-50">
-                        <td colSpan={3} className="py-2 font-medium text-right pr-4 text-gray-900">
-                          合计：
-                        </td>
-                        <td className="py-2 text-right font-bold text-lg text-gray-900">
-                          {formatMoney(calculateTotal(group))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-
-                {/* 发票信息 */}
-                <div className="bg-gray-50 px-4 py-3 border-t">
-                  <div className="flex flex-wrap gap-6 text-sm">
-                    <div>
-                      <span className="text-gray-500">发票号：</span>
-                      <span className="font-medium text-gray-900">
-                        {group.invoiceNumber || "未填写"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">开票日期：</span>
-                      <span className="font-medium text-gray-900">
-                        {formatDate(group.invoiceDate)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                group={group}
+                userRole={userRole}
+                onAddItem={() => openAddItemModal(group)}
+                onEditInvoice={() => openInvoiceModal(group)}
+                onToggleVerified={() => toggleVerified(group.id, group.isVerified)}
+                onToggleReimbursed={() => toggleReimbursed(group.id, group.isReimbursed)}
+                onDelete={() => deleteOrderGroup(group.id)}
+                formatDate={formatDate}
+                formatMoney={formatMoney}
+                calculateTotal={calculateTotal}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* 新增供应商模态框 */}
+      {/* 新增供应商/明细弹窗 */}
       {showAddModal && (
-        <AddOrderModal
+        <AddSupplierModal
           month={selectedMonth}
+          existingSuppliers={orderGroups.map(g => g.supplierName)}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false);
+            loadOrderGroups();
+          }}
+        />
+      )}
+
+      {/* 添加明细弹窗 */}
+      {showAddItemModal && selectedGroup && (
+        <AddItemModal
+          group={selectedGroup}
+          onClose={() => {
+            setShowAddItemModal(false);
+            setSelectedGroup(null);
+          }}
+          onSuccess={() => {
+            setShowAddItemModal(false);
+            setSelectedGroup(null);
+            loadOrderGroups();
+          }}
+        />
+      )}
+
+      {/* 填写发票弹窗 */}
+      {showInvoiceModal && selectedGroup && (
+        <InvoiceModal
+          group={selectedGroup}
+          totalAmount={calculateTotal(selectedGroup)}
+          onClose={() => {
+            setShowInvoiceModal(false);
+            setSelectedGroup(null);
+          }}
+          onSuccess={() => {
+            setShowInvoiceModal(false);
+            setSelectedGroup(null);
             loadOrderGroups();
           }}
         />
@@ -389,54 +325,238 @@ export default function DashboardView({
   );
 }
 
-// 新增供应商模态框组件
-function AddOrderModal({
-  month,
-  onClose,
-  onSuccess,
-}: {
+// 供应商卡片组件
+interface SupplierCardProps {
+  group: OrderGroup;
+  userRole: string;
+  onAddItem: () => void;
+  onEditInvoice: () => void;
+  onToggleVerified: () => void;
+  onToggleReimbursed: () => void;
+  onDelete: () => void;
+  formatDate: (date: string | null) => string;
+  formatMoney: (amount: number) => string;
+  calculateTotal: (group: OrderGroup) => number;
+}
+
+function SupplierCard({
+  group,
+  userRole,
+  onAddItem,
+  onEditInvoice,
+  onToggleVerified,
+  onToggleReimbursed,
+  onDelete,
+  formatDate,
+  formatMoney,
+  calculateTotal,
+}: SupplierCardProps) {
+  const total = calculateTotal(group);
+  const hasInvoice = group.invoiceNumber || group.invoiceDate;
+
+  return (
+    <div className="bg-white rounded-lg shadow border overflow-hidden">
+      {/* 卡片头部 */}
+      <div className="bg-gray-50 px-4 py-3 border-b">
+        <div className="flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-3">
+              <h3 className="font-semibold text-lg text-gray-900">{group.supplierName}</h3>
+              {/* 状态徽章 */}
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  group.isVerified
+                    ? "bg-green-100 text-green-800"
+                    : "bg-yellow-100 text-yellow-800"
+                }`}>
+                  {group.isVerified ? "已核查" : "待核查"}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  group.isReimbursed
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800"
+                }`}>
+                  {group.isReimbursed ? "已报销" : "未报销"}
+                </span>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              {group.orderItems.length} 项试剂 · 最后更新：{formatDate(group.updatedAt)}
+            </p>
+          </div>
+          
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-2">
+            {/* 添加明细按钮 */}
+            <button
+              onClick={onAddItem}
+              className="px-3 py-1.5 text-sm bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 transition-colors"
+            >
+              + 添加试剂
+            </button>
+            
+            {/* 填写发票按钮 */}
+            <button
+              onClick={onEditInvoice}
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                hasInvoice
+                  ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  : "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200"
+              }`}
+            >
+              {hasInvoice ? "修改发票" : "填写发票"}
+            </button>
+
+            {/* 管理员操作 */}
+            {userRole === "ADMIN" && (
+              <>
+                <button
+                  onClick={onToggleVerified}
+                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                    group.isVerified
+                      ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      : "bg-green-600 text-white hover:bg-green-700"
+                  }`}
+                >
+                  {group.isVerified ? "取消核查" : "确认核查"}
+                </button>
+                <button
+                  onClick={onToggleReimbursed}
+                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                    group.isReimbursed
+                      ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  {group.isReimbursed ? "取消报销" : "确认报销"}
+                </button>
+              </>
+            )}
+            
+            {/* 删除按钮 */}
+            <button
+              onClick={onDelete}
+              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="删除整个供应商订单组"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 耗材明细表格 */}
+      <div className="p-4">
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-sm text-gray-600 border-b">
+              <th className="pb-2 font-medium">订购日期</th>
+              <th className="pb-2 font-medium">试剂名称</th>
+              <th className="pb-2 font-medium">类型</th>
+              <th className="pb-2 font-medium text-right">价格</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.orderItems.map((item) => (
+              <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
+                <td className="py-2 text-sm text-gray-600">
+                  {formatDate(item.orderDate)}
+                </td>
+                <td className="py-2 text-gray-900">{item.reagentName}</td>
+                <td className="py-2">
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    item.type === "PUBLIC_REAGENT"
+                      ? "bg-purple-100 text-purple-800"
+                      : "bg-orange-100 text-orange-800"
+                  }`}>
+                    {item.type === "PUBLIC_REAGENT" ? "公共试剂" : "个人试剂"}
+                  </span>
+                </td>
+                <td className="py-2 text-right font-medium text-gray-900">
+                  {formatMoney(item.price)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gray-50">
+              <td colSpan={3} className="py-3 font-medium text-right pr-4 text-gray-900">
+                合计金额：
+              </td>
+              <td className="py-3 text-right font-bold text-lg text-gray-900">
+                {formatMoney(total)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* 发票信息 */}
+      <div className="bg-gray-50 px-4 py-3 border-t">
+        <div className="flex flex-wrap gap-6 text-sm">
+          <div>
+            <span className="text-gray-500">发票号：</span>
+            <span className={`font-medium ${group.invoiceNumber ? "text-gray-900" : "text-amber-600"}`}>
+              {group.invoiceNumber || "待填写"}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-500">开票日期：</span>
+            <span className={`font-medium ${group.invoiceDate ? "text-gray-900" : "text-amber-600"}`}>
+              {formatDate(group.invoiceDate)}
+            </span>
+          </div>
+          {!hasInvoice && (
+            <div className="text-amber-600 text-xs flex items-center">
+              <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              请月底收到发票后及时填写，方便核对金额
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 新增供应商/明细弹窗
+interface AddSupplierModalProps {
   month: string;
+  existingSuppliers: string[];
   onClose: () => void;
   onSuccess: () => void;
-}) {
+}
+
+function AddSupplierModal({ month, existingSuppliers, onClose, onSuccess }: AddSupplierModalProps) {
   const [supplierName, setSupplierName] = useState("");
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState("");
-  const [items, setItems] = useState<Array<{
-    reagentName: string;
-    type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT";
-    price: string;
-    orderDate: string;
-  }>>([]);
+  const [isExisting, setIsExisting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const addItem = () => {
-    setItems([
-      ...items,
-      { reagentName: "", type: "PUBLIC_REAGENT", price: "", orderDate: new Date().toISOString().split("T")[0] },
-    ]);
-  };
+  // 表单数据
+  const [reagentName, setReagentName] = useState("");
+  const [type, setType] = useState<"PUBLIC_REAGENT" | "PERSONAL_REAGENT">("PUBLIC_REAGENT");
+  const [price, setPrice] = useState("");
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0]);
 
-  const updateItem = (index: number, field: string, value: string) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setItems(newItems);
-  };
-
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+  // 检查供应商是否已存在
+  useEffect(() => {
+    const exists = existingSuppliers.some(
+      s => s.toLowerCase() === supplierName.trim().toLowerCase()
+    );
+    setIsExisting(exists);
+  }, [supplierName, existingSuppliers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierName.trim()) {
-      alert("请填写供应商名称");
-      return;
-    }
-    if (items.length === 0) {
-      alert("请至少添加一项耗材");
+    if (!supplierName.trim() || !reagentName.trim() || !price) {
+      alert("请填写所有必填字段");
       return;
     }
 
+    setLoading(true);
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -444,161 +564,122 @@ function AddOrderModal({
         body: JSON.stringify({
           month,
           supplierName: supplierName.trim(),
-          invoiceNumber: invoiceNumber.trim() || null,
-          invoiceDate: invoiceDate || null,
-          orderItems: items,
+          orderItems: [{
+            reagentName: reagentName.trim(),
+            type,
+            price: parseFloat(price),
+            orderDate,
+          }],
         }),
       });
+
       if (res.ok) {
         onSuccess();
       } else {
         const data = await res.json();
-        alert(data.error || "创建失败");
+        alert(data.error || "添加失败");
       }
     } catch (error) {
-      console.error("创建订单失败:", error);
-      alert("创建失败，请稍后重试");
+      console.error("添加失败:", error);
+      alert("添加失败，请稍后重试");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg max-w-lg w-full">
         <div className="p-6">
-          <h2 className="text-xl font-bold mb-4">新增供应商订单</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4">
-              {/* 基本信息 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    月份 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={month}
-                    disabled
-                    className="w-full border rounded-md px-3 py-2 bg-gray-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    供应商名称 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={supplierName}
-                    onChange={(e) => setSupplierName(e.target.value)}
-                    placeholder="例如：诺唯赞、生工、Thermo"
-                    className="w-full border rounded-md px-3 py-2"
-                    required
-                  />
-                </div>
-              </div>
+          <h2 className="text-xl font-bold mb-4">
+            {isExisting ? "添加到现有供应商" : "新增供应商"}
+          </h2>
+          
+          {isExisting && (
+            <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded text-sm">
+              该供应商本月已有订单，将自动添加到现有卡片中
+            </div>
+          )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    发票号
-                  </label>
-                  <input
-                    type="text"
-                    value={invoiceNumber}
-                    onChange={(e) => setInvoiceNumber(e.target.value)}
-                    className="w-full border rounded-md px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    开票日期
-                  </label>
-                  <input
-                    type="date"
-                    value={invoiceDate}
-                    onChange={(e) => setInvoiceDate(e.target.value)}
-                    className="w-full border rounded-md px-3 py-2"
-                  />
-                </div>
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                供应商名称 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                placeholder="例如：生工、诺唯赞、Thermo"
+                className="w-full border rounded-md px-3 py-2"
+                required
+                list="supplier-suggestions"
+              />
+              <datalist id="supplier-suggestions">
+                {existingSuppliers.map(s => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </div>
 
-              {/* 耗材明细 */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    耗材明细
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    + 添加耗材
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {items.map((item, index) => (
-                    <div key={index} className="border rounded-md p-3 bg-gray-50">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-gray-600">
-                          耗材 #{index + 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          删除
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="col-span-2">
-                          <input
-                            type="text"
-                            value={item.reagentName}
-                            onChange={(e) => updateItem(index, "reagentName", e.target.value)}
-                            placeholder="试剂名称/规格"
-                            className="w-full border rounded-md px-3 py-2"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <select
-                            value={item.type}
-                            onChange={(e) => updateItem(index, "type", e.target.value as any)}
-                            className="w-full border rounded-md px-3 py-2"
-                          >
-                            <option value="PUBLIC_REAGENT">公共试剂</option>
-                            <option value="PERSONAL_REAGENT">个人试剂</option>
-                          </select>
-                        </div>
-                        <div>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.price}
-                            onChange={(e) => updateItem(index, "price", e.target.value)}
-                            placeholder="价格"
-                            className="w-full border rounded-md px-3 py-2"
-                            required
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <input
-                            type="date"
-                            value={item.orderDate}
-                            onChange={(e) => updateItem(index, "orderDate", e.target.value)}
-                            className="w-full border rounded-md px-3 py-2"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  试剂名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={reagentName}
+                  onChange={(e) => setReagentName(e.target.value)}
+                  placeholder="例如：Mfn3抗体"
+                  className="w-full border rounded-md px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  类型
+                </label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as any)}
+                  className="w-full border rounded-md px-3 py-2"
+                >
+                  <option value="PUBLIC_REAGENT">公共试剂</option>
+                  <option value="PERSONAL_REAGENT">个人试剂</option>
+                </select>
               </div>
             </div>
 
-            {/* 操作按钮 */}
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  价格 (¥) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border rounded-md px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  订购日期
+                </label>
+                <input
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  className="w-full border rounded-md px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
               <button
                 type="button"
                 onClick={onClose}
@@ -608,9 +689,254 @@ function AddOrderModal({
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
-                创建订单
+                {loading ? "保存中..." : isExisting ? "添加到此供应商" : "创建并添加"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 添加明细弹窗
+interface AddItemModalProps {
+  group: OrderGroup;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function AddItemModal({ group, onClose, onSuccess }: AddItemModalProps) {
+  const [reagentName, setReagentName] = useState("");
+  const [type, setType] = useState<"PUBLIC_REAGENT" | "PERSONAL_REAGENT">("PUBLIC_REAGENT");
+  const [price, setPrice] = useState("");
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0]);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reagentName.trim() || !price) {
+      alert("请填写试剂名称和价格");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${group.id}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reagentName: reagentName.trim(),
+          type,
+          price: parseFloat(price),
+          orderDate,
+        }),
+      });
+
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const data = await res.json();
+        alert(data.error || "添加失败");
+      }
+    } catch (error) {
+      console.error("添加失败:", error);
+      alert("添加失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-md w-full">
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-1">添加试剂明细</h2>
+          <p className="text-sm text-gray-500 mb-4">供应商：{group.supplierName}</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                试剂名称 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={reagentName}
+                onChange={(e) => setReagentName(e.target.value)}
+                placeholder="例如：Mfn3抗体"
+                className="w-full border rounded-md px-3 py-2"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                类型
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as any)}
+                className="w-full border rounded-md px-3 py-2"
+              >
+                <option value="PUBLIC_REAGENT">公共试剂</option>
+                <option value="PERSONAL_REAGENT">个人试剂</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  价格 (¥) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border rounded-md px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  订购日期
+                </label>
+                <input
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  className="w-full border rounded-md px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border rounded-md hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "添加中..." : "添加"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 填写发票弹窗
+interface InvoiceModalProps {
+  group: OrderGroup;
+  totalAmount: number;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalProps) {
+  const [invoiceNumber, setInvoiceNumber] = useState(group.invoiceNumber || "");
+  const [invoiceDate, setInvoiceDate] = useState(
+    group.invoiceDate ? group.invoiceDate.split("T")[0] : ""
+  );
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${group.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceNumber: invoiceNumber || null,
+          invoiceDate: invoiceDate || null,
+        }),
+      });
+
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const data = await res.json();
+        alert(data.error || "保存失败");
+      }
+    } catch (error) {
+      console.error("保存失败:", error);
+      alert("保存失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-md w-full">
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-1">填写发票信息</h2>
+          <p className="text-sm text-gray-500 mb-4">供应商：{group.supplierName}</p>
+
+          {/* 金额核对提示 */}
+          <div className="mb-4 p-3 bg-blue-50 rounded text-sm">
+            <div className="flex justify-between mb-1">
+              <span className="text-gray-600">订单总金额：</span>
+              <span className="font-bold text-blue-900">¥{totalAmount.toFixed(2)}</span>
+            </div>
+            <p className="text-blue-700 text-xs mt-1">
+              请核对发票金额是否与订单金额一致
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                发票号
+              </label>
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="例如：12345678"
+                className="w-full border rounded-md px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                开票日期
+              </label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border rounded-md hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "保存中..." : "保存"}
               </button>
             </div>
           </form>
