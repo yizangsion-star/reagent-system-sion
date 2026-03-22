@@ -4,12 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-interface Order {
+interface OrderItem {
   id: string;
   reagentName: string;
   type: string;
   orderDate: string;
   price: number;
+}
+
+interface Order {
+  id: string;
+  month: string;
+  supplierName: string;
   invoiceNumber: string | null;
   invoiceDate: string | null;
   isVerified: boolean;
@@ -18,6 +24,7 @@ interface Order {
   user: {
     username: string;
   };
+  orderItems: OrderItem[];
 }
 
 export default function OrderDetailView({
@@ -31,6 +38,7 @@ export default function OrderDetailView({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState(false);
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "";
     try {
@@ -40,11 +48,13 @@ export default function OrderDetailView({
     }
   };
 
+  // 使用第一个订单项的数据作为表单初始值
+  const firstItem = order.orderItems[0];
   const [formData, setFormData] = useState({
-    reagentName: order.reagentName,
-    type: order.type,
-    orderDate: formatDate(order.orderDate),
-    price: String(order.price),
+    reagentName: firstItem?.reagentName || "",
+    type: firstItem?.type || "PUBLIC_REAGENT",
+    orderDate: formatDate(firstItem?.orderDate || null),
+    price: firstItem ? String(firstItem.price) : "0",
     invoiceNumber: order.invoiceNumber || "",
     invoiceDate: formatDate(order.invoiceDate),
   });
@@ -74,7 +84,7 @@ export default function OrderDetailView({
   };
 
   const handleDelete = async () => {
-    if (!confirm("确定要删除这个订单吗？")) return;
+    if (!confirm("确定要删除这个订单组吗？")) return;
 
     setLoading(true);
     try {
@@ -134,6 +144,9 @@ export default function OrderDetailView({
       setTimeout(() => setMessage(""), 3000);
     }
   };
+
+  // 计算总价
+  const totalPrice = order.orderItems.reduce((sum, item) => sum + Number(item.price), 0);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -202,220 +215,166 @@ export default function OrderDetailView({
             </div>
           </div>
 
-          <div className="space-y-4">
+          {/* 订单组信息 */}
+          <div className="mb-6 pb-4 border-b">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500">
+                  供应商
+                </label>
+                <p className="mt-1 text-sm text-gray-900">{order.supplierName}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">
+                  月份
+                </label>
+                <p className="mt-1 text-sm text-gray-900">{order.month}</p>
+              </div>
+            </div>
+            {isAdmin && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-500">
+                  订购人
+                </label>
+                <p className="mt-1 text-sm text-gray-900">{order.user.username}</p>
+              </div>
+            )}
+          </div>
+
+          {/* 试剂明细列表 */}
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">试剂明细 ({order.orderItems.length}项)</h3>
+            <div className="space-y-3">
+              {order.orderItems.map((item, index) => (
+                <div key={item.id} className="rounded-md border bg-gray-50 p-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{item.reagentName}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {item.type === "PUBLIC_REAGENT" ? "公共试剂" : "个人试剂"}
+                      </p>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900">¥{Number(item.price).toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-right text-sm font-medium text-gray-900">
+              总计：¥{totalPrice.toFixed(2)}
+            </div>
+          </div>
+
+          {/* 发票信息 */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">发票信息</h3>
+
             <div>
               <label className="block text-sm font-medium text-gray-500">
-                试剂名称/规格
+                发票号
               </label>
               {editing ? (
                 <input
                   type="text"
-                  value={formData.reagentName}
+                  value={formData.invoiceNumber}
                   onChange={(e) =>
-                    setFormData({ ...formData, reagentName: e.target.value })
+                    setFormData({ ...formData, invoiceNumber: e.target.value })
                   }
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
+                  placeholder="无发票可留空"
                 />
               ) : (
-                <p className="mt-1 text-sm text-gray-900">{order.reagentName}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-500">
-                试剂类型
-              </label>
-              {editing ? (
-                <select
-                  value={formData.type}
-                  onChange={(e) =>
-                    setFormData({ ...formData, type: e.target.value })
-                  }
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
-                >
-                  <option value="PERSONAL_REAGENT">个人试剂</option>
-                  <option value="PUBLIC_REAGENT">公共试剂</option>
-                </select>
-              ) : (
                 <p className="mt-1 text-sm text-gray-900">
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
-                      order.type === "PUBLIC_REAGENT"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-green-100 text-green-800"
-                    }`}
-                  >
-                    {order.type === "PUBLIC_REAGENT" ? "公共试剂" : "个人试剂"}
-                  </span>
+                  {order.invoiceNumber || "无发票"}
                 </p>
               )}
             </div>
 
-            {isAdmin && (
-              <div>
-                <label className="block text-sm font-medium text-gray-500">
-                  订购人
-                </label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {order.user.username}
-                </p>
-              </div>
-            )}
-
-            <div>
+            <div className="mt-4">
               <label className="block text-sm font-medium text-gray-500">
-                订购日期
+                开票日期
               </label>
               {editing ? (
                 <input
                   type="date"
-                  value={formData.orderDate}
+                  value={formData.invoiceDate}
                   onChange={(e) =>
-                    setFormData({ ...formData, orderDate: e.target.value })
+                    setFormData({ ...formData, invoiceDate: e.target.value })
                   }
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
                 />
               ) : (
                 <p className="mt-1 text-sm text-gray-900">
-                  {new Date(order.orderDate).toLocaleDateString("zh-CN")}
+                  {order.invoiceDate
+                    ? new Date(order.invoiceDate).toLocaleDateString("zh-CN")
+                    : "-"}
                 </p>
               )}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-500">
-                价格
-              </label>
-              {editing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
-                />
-              ) : (
-                <p className="mt-1 text-sm text-gray-900">
-                  ¥{Number(order.price).toFixed(2)}
-                </p>
-              )}
-            </div>
-
-            <div className="border-t pt-4">
+          {isAdmin && (
+            <div className="border-t pt-4 mt-4">
               <h3 className="text-sm font-medium text-gray-700 mb-4">
-                发票信息
+                管理员操作
               </h3>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-500">
-                  发票号
-                </label>
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.invoiceNumber}
-                    onChange={(e) =>
-                      setFormData({ ...formData, invoiceNumber: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
-                    placeholder="无发票可留空"
-                  />
-                ) : (
-                  <p className="mt-1 text-sm text-gray-900">
-                    {order.invoiceNumber || "无发票"}
-                  </p>
-                )}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">核查状态</span>
+                  <button
+                    onClick={handleToggleVerified}
+                    disabled={loading}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      order.isVerified ? "bg-green-600" : "bg-gray-200"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        order.isVerified ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">报销状态</span>
+                  <button
+                    onClick={handleToggleReimbursed}
+                    disabled={loading}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      order.isReimbursed ? "bg-green-600" : "bg-gray-200"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        order.isReimbursed ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-500">
-                  开票日期
-                </label>
-                {editing ? (
-                  <input
-                    type="date"
-                    value={formData.invoiceDate}
-                    onChange={(e) =>
-                      setFormData({ ...formData, invoiceDate: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2"
-                  />
-                ) : (
-                  <p className="mt-1 text-sm text-gray-900">
-                    {order.invoiceDate
-                      ? new Date(order.invoiceDate).toLocaleDateString("zh-CN")
-                      : "-"}
-                  </p>
-                )}
+              <div className="mt-4 flex space-x-4">
+                <span
+                  className={`px-2 py-1 text-xs rounded-full ${
+                    order.isVerified
+                      ? "bg-green-100 text-green-800"
+                      : "bg-yellow-100 text-yellow-800"
+                  }`}
+                >
+                  {order.isVerified ? "已核查" : "待核查"}
+                </span>
+                <span
+                  className={`px-2 py-1 text-xs rounded-full ${
+                    order.isReimbursed
+                      ? "bg-green-100 text-green-800"
+                      : "bg-gray-100 text-gray-800"
+                  }`}
+                >
+                  {order.isReimbursed ? "已报销" : "未报销"}
+                </span>
               </div>
             </div>
-
-            {isAdmin && (
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-4">
-                  管理员操作
-                </h3>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">核查状态</span>
-                    <button
-                      onClick={handleToggleVerified}
-                      disabled={loading}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        order.isVerified ? "bg-green-600" : "bg-gray-200"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          order.isVerified ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">报销状态</span>
-                    <button
-                      onClick={handleToggleReimbursed}
-                      disabled={loading}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        order.isReimbursed ? "bg-green-600" : "bg-gray-200"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          order.isReimbursed ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex space-x-4">
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
-                      order.isVerified
-                        ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {order.isVerified ? "已核查" : "待核查"}
-                  </span>
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${
-                      order.isReimbursed
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {order.isReimbursed ? "已报销" : "未报销"}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </main>
     </div>

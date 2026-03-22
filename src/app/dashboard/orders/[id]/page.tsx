@@ -29,7 +29,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
   const { id } = await params;
 
-  const order = await prisma.reagentOrder.findUnique({
+  const order = await prisma.orderGroup.findUnique({
     where: { id },
     include: { user: true },
   });
