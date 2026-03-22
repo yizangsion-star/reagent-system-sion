@@ -1,7 +1,12 @@
 {
-  "buildCommand": "prisma generate && prisma db push --accept-data-loss && next build",
+  "buildCommand": "prisma generate && prisma migrate deploy && npx prisma db seed && next build",
   "installCommand": "npm install",
   "devCommand": "next dev",
   "framework": "nextjs",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "env": {
+    "DATABASE_URL": "postgresql://neondb_owner:npg_EO3N0dHfBSmk@ep-broad-base-anq4atc8.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require",
+    "NEXTAUTH_SECRET": "reagent-system-secret-key-2026-change-in-production",
+    "NEXTAUTH_URL": "https://reagent-system-eight.vercel.app"
+  }
 }
