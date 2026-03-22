@@ -345,7 +345,7 @@ export default function DashboardView({
                     <tbody>
                       {group.orderItems.map((item) => (
                         <tr key={item.id} className="border-b last:border-0">
-                          <td className="py-2">{item.reagentName}</td>
+                          <td className="py-2 text-gray-900">{item.reagentName}</td>
                           <td className="py-2">
                             <span className={`px-2 py-1 rounded text-xs ${
                               item.type === "PUBLIC_REAGENT"
@@ -358,7 +358,7 @@ export default function DashboardView({
                           <td className="py-2 text-sm text-gray-600">
                             {formatDate(item.orderDate)}
                           </td>
-                          <td className="py-2 text-right font-medium">
+                          <td className="py-2 text-right font-medium text-gray-900">
                             ¥{item.price.toFixed(2)}
                           </td>
                         </tr>
