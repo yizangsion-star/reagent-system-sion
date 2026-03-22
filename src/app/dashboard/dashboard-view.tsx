@@ -366,10 +366,10 @@ export default function DashboardView({
                     </tbody>
                     <tfoot>
                       <tr className="bg-gray-50">
-                        <td colSpan={3} className="py-2 font-medium text-right pr-4">
+                        <td colSpan={3} className="py-2 font-medium text-right pr-4 text-gray-900">
                           合计：
                         </td>
-                        <td className="py-2 text-right font-bold text-lg">
+                        <td className="py-2 text-right font-bold text-lg text-gray-900">
                           {formatMoney(calculateTotal(group))}
                         </td>
                       </tr>
@@ -382,13 +382,13 @@ export default function DashboardView({
                   <div className="flex flex-wrap gap-6 text-sm">
                     <div>
                       <span className="text-gray-500">发票号：</span>
-                      <span className="font-medium">
+                      <span className="font-medium text-gray-900">
                         {group.invoiceNumber || "未填写"}
                       </span>
                     </div>
                     <div>
                       <span className="text-gray-500">开票日期：</span>
-                      <span className="font-medium">
+                      <span className="font-medium text-gray-900">
                         {formatDate(group.invoiceDate)}
                       </span>
                     </div>
