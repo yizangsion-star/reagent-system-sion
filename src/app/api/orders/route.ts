@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prismadb";
 
-// 获取订单列表
+// GET /api/orders - 获取订单数据
+// 查询参数：
+// - month: 年月 (例如 "2026-03")，可选，不传则获取所有月份
+// - userId: 用户 ID，仅管理员可用
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -19,14 +22,52 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "账号未审核" }, { status: 403 });
     }
 
-    // 管理员可以看到所有订单，学生只能看到自己的
-    const orders = await prisma.reagentOrder.findMany({
-      where: user.role === "ADMIN" ? {} : { userId: user.id },
-      include: { user: true },
-      orderBy: { orderDate: "desc" },
+    const searchParams = request.nextUrl.searchParams;
+    const month = searchParams.get("month");
+    const targetUserId = searchParams.get("userId");
+
+    // 构建查询条件
+    let whereClause: any = {};
+
+    // 管理员可以选择查看特定用户的数据，学生只能查看自己的
+    if (user.role === "ADMIN") {
+      if (targetUserId) {
+        whereClause.userId = targetUserId;
+      }
+    } else {
+      whereClause.userId = user.id;
+    }
+
+    // 按月份过滤
+    if (month) {
+      whereClause.month = month;
+    }
+
+    // 获取订单组（包含耗材明细）
+    const orderGroups = await prisma.orderGroup.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+        orderItems: true,
+      },
+      orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(orders);
+    // 序列化数据（处理 Decimal 类型）
+    const serializedGroups = orderGroups.map(group => ({
+      ...group,
+      orderItems: group.orderItems.map(item => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    }));
+
+    return NextResponse.json(serializedGroups);
   } catch (error) {
     console.error("获取订单错误:", error);
     return NextResponse.json(
@@ -36,7 +77,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 创建新订单
+// POST /api/orders - 创建新的供应商子项（订单组）
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -54,28 +95,54 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { reagentName, type, orderDate, price, invoiceNumber, invoiceDate } = body;
+    const {
+      month,
+      supplierName,
+      invoiceNumber,
+      invoiceDate,
+      orderItems,
+    } = body;
 
-    if (!reagentName || !type || !orderDate || !price) {
+    // 验证必填字段
+    if (!month || !supplierName) {
       return NextResponse.json(
-        { error: "请填写必填字段" },
+        { error: "请填写必填字段（年月、供应商名称）" },
         { status: 400 }
       );
     }
 
-    const order = await prisma.reagentOrder.create({
+    // 验证月份格式 (YYYY-MM)
+    const monthRegex = /^\d{4}-\d{2}$/;
+    if (!monthRegex.test(month)) {
+      return NextResponse.json(
+        { error: "月份格式应为 YYYY-MM (例如：2026-03)" },
+        { status: 400 }
+      );
+    }
+
+    // 创建订单组及耗材明细
+    const orderGroup = await prisma.orderGroup.create({
       data: {
         userId: user.id,
-        reagentName,
-        type,
-        orderDate: new Date(orderDate),
-        price: parseFloat(price),
+        month,
+        supplierName,
         invoiceNumber: invoiceNumber || null,
         invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+        orderItems: orderItems && orderItems.length > 0 ? {
+          create: orderItems.map((item: any) => ({
+            reagentName: item.reagentName,
+            type: item.type,
+            price: parseFloat(item.price),
+            orderDate: item.orderDate ? new Date(item.orderDate) : new Date(),
+          }))
+        } : undefined,
+      },
+      include: {
+        orderItems: true,
       },
     });
 
-    return NextResponse.json(order, { status: 201 });
+    return NextResponse.json(orderGroup, { status: 201 });
   } catch (error) {
     console.error("创建订单错误:", error);
     return NextResponse.json(

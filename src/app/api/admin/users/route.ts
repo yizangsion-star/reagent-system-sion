@@ -2,6 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prismadb";
 
+// GET /api/admin/users - 获取所有用户列表
+export async function GET() {
+  try {
+    const session = await auth();
+
+    if (!session) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: session.user?.id },
+    });
+
+    if (admin?.role !== "ADMIN") {
+      return NextResponse.json({ error: "无权限" }, { status: 403 });
+    }
+
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        isApproved: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json(users);
+  } catch (error) {
+    console.error("获取用户列表错误:", error);
+    return NextResponse.json(
+      { error: "获取失败，请稍后重试" },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/admin/users - 管理用户（审核、修改角色）
 export async function PATCH(request: NextRequest) {
   try {
     const session = await auth();

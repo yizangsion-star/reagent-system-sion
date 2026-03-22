@@ -22,40 +22,75 @@ enum ReagentType {
   PERSONAL_REAGENT  // 个人试剂
 }
 
-// 用户模型
+// 用户模型（保持不变）
 model User {
-  id            String          @id @default(cuid())
-  username      String          @unique
-  password      String          // 加密后的密码
-  role          Role            @default(STUDENT)
-  isApproved    Boolean         @default(false)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  reagentOrders ReagentOrder[]
+  id            String        @id @default(cuid())
+  username      String        @unique
+  password      String        // 加密后的密码
+  role          Role          @default(STUDENT)
+  isApproved    Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  orderGroups   OrderGroup[]  // 新增：供应商子项关联
 
   @@index([username])
   @@index([isApproved])
 }
 
-// 试剂订购与发票模型
-model ReagentOrder {
+// 订单组模型（供应商子项）- 新增
+// 代表某个用户在某个月份从某个供应商采购的一批试剂
+model OrderGroup {
   id            String        @id @default(cuid())
   userId        String
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reagentName   String        // 试剂名称/规格
-  type          ReagentType
-  orderDate     DateTime      // 订购时间
-  price         Decimal       @db.Decimal(10, 2) // 价格
+  
+  // 时间空间：年月格式 "2026-03"
+  month         String        // 例如 "2026-03"，用于按月份过滤和聚合
+  
+  // 供应商信息
+  supplierName  String        // 公司名称，如"诺唯赞"、"生工"、"Thermo"
+  
+  // 发票信息（挂在供应商子项层级）
   invoiceNumber String?       // 发票号（可选）
-  invoiceDate   DateTime?     // 开发票时间（可选）
+  invoiceDate   DateTime?     // 开票日期（可选）
+  
+  // 核查与报销状态（在供应商子项层级管理）
   isVerified    Boolean       @default(false)   // 是否已核查
   isReimbursed  Boolean       @default(false)   // 是否已报销
+  
+  // 时间戳
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // 关联的耗材明细
+  orderItems    OrderItem[]
+
+  @@index([userId])
+  @@index([month])
+  @@index([supplierName])
+  @@index([isVerified])
+  @@index([isReimbursed])
+}
+
+// 订单明细模型（耗材）- 新增
+// 代表供应商子项下的具体试剂耗材
+model OrderItem {
+  id            String        @id @default(cuid())
+  orderGroupId  String
+  orderGroup    OrderGroup    @relation(fields: [orderGroupId], references: [id], onDelete: Cascade)
+  
+  // 试剂信息
+  reagentName   String        // 试剂名称/规格
+  type          ReagentType   // 公共试剂 / 个人试剂
+  price         Decimal       @db.Decimal(10, 2)  // 单价
+  
+  // 订购时间（从订单组继承，但也可以单独记录）
+  orderDate     DateTime      @default(now())
+  
+  // 时间戳
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  @@index([userId])
+  @@index([orderGroupId])
   @@index([type])
-  @@index([isVerified])
-  @@index([isReimbursed])
-  @@index([orderDate])
 }

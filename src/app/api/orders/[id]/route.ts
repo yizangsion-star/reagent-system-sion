@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prismadb";
 
-// 获取单个订单详情
+// GET /api/orders/[id] - 获取单个订单组详情
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
-    const { id } = await params;
 
     if (!session) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -23,23 +22,42 @@ export async function GET(
       return NextResponse.json({ error: "账号未审核" }, { status: 403 });
     }
 
-    const order = await prisma.reagentOrder.findUnique({
+    const { id } = await params;
+
+    const orderGroup = await prisma.orderGroup.findUnique({
       where: { id },
-      include: { user: true },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+        orderItems: true,
+      },
     });
 
-    if (!order) {
+    if (!orderGroup) {
       return NextResponse.json({ error: "订单不存在" }, { status: 404 });
     }
 
-    // 学生只能查看自己的订单
-    if (user.role !== "ADMIN" && order.userId !== user.id) {
-      return NextResponse.json({ error: "无权限查看" }, { status: 403 });
+    // 权限检查：学生只能查看自己的订单
+    if (user.role !== "ADMIN" && orderGroup.userId !== user.id) {
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    return NextResponse.json(order);
+    // 序列化数据（处理 Decimal 类型）
+    const serializedOrder = {
+      ...orderGroup,
+      orderItems: orderGroup.orderItems.map((item: any) => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    };
+
+    return NextResponse.json(serializedOrder);
   } catch (error) {
-    console.error("获取订单错误:", error);
+    console.error("获取订单详情错误:", error);
     return NextResponse.json(
       { error: "获取失败，请稍后重试" },
       { status: 500 }
@@ -47,14 +65,13 @@ export async function GET(
   }
 }
 
-// 更新订单
-export async function PATCH(
+// PUT /api/orders/[id] - 更新订单组（发票信息、核查/报销状态）
+export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
-    const { id } = await params;
 
     if (!session) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -68,51 +85,67 @@ export async function PATCH(
       return NextResponse.json({ error: "账号未审核" }, { status: 403 });
     }
 
-    const order = await prisma.reagentOrder.findUnique({
+    const { id } = await params;
+    const body = await request.json();
+
+    const existingOrder = await prisma.orderGroup.findUnique({
       where: { id },
     });
 
-    if (!order) {
+    if (!existingOrder) {
       return NextResponse.json({ error: "订单不存在" }, { status: 404 });
     }
 
-    // 学生只能编辑自己的订单，管理员可以编辑所有订单
-    if (user.role !== "ADMIN" && order.userId !== user.id) {
-      return NextResponse.json({ error: "无权限编辑" }, { status: 403 });
+    // 权限检查：学生只能更新自己的订单，管理员可以更新所有
+    if (user.role !== "ADMIN" && existingOrder.userId !== user.id) {
+      return NextResponse.json({ error: "无权操作" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const {
-      reagentName,
-      type,
-      orderDate,
-      price,
-      invoiceNumber,
-      invoiceDate,
-      isVerified,
-      isReimbursed,
-    } = body;
-
-    const updateData: Record<string, any> = {};
-    if (reagentName !== undefined) updateData.reagentName = reagentName;
-    if (type !== undefined) updateData.type = type;
-    if (orderDate !== undefined) updateData.orderDate = new Date(orderDate);
-    if (price !== undefined) updateData.price = parseFloat(price);
-    if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
-    if (invoiceDate !== undefined)
-      updateData.invoiceDate = invoiceDate ? new Date(invoiceDate) : null;
-    // 只有管理员可以修改核查和报销状态
+    // 学生只能更新发票信息，管理员可以更新核查/报销状态
+    const updateData: any = {};
+    
     if (user.role === "ADMIN") {
-      if (isVerified !== undefined) updateData.isVerified = isVerified;
-      if (isReimbursed !== undefined) updateData.isReimbursed = isReimbursed;
+      // 管理员可以更新所有字段
+      if (body.invoiceNumber !== undefined) {
+        updateData.invoiceNumber = body.invoiceNumber;
+      }
+      if (body.invoiceDate !== undefined) {
+        updateData.invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : null;
+      }
+      if (body.isVerified !== undefined) {
+        updateData.isVerified = body.isVerified;
+      }
+      if (body.isReimbursed !== undefined) {
+        updateData.isReimbursed = body.isReimbursed;
+      }
+    } else {
+      // 学生只能更新发票信息
+      if (body.invoiceNumber !== undefined) {
+        updateData.invoiceNumber = body.invoiceNumber;
+      }
+      if (body.invoiceDate !== undefined) {
+        updateData.invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : null;
+      }
     }
 
-    const updatedOrder = await prisma.reagentOrder.update({
+    const updatedOrder = await prisma.orderGroup.update({
       where: { id },
       data: updateData,
+      include: {
+        orderItems: true,
+      },
     });
 
-    return NextResponse.json(updatedOrder);
+    // 序列化数据（处理 Decimal 类型）
+    const serializedOrder = {
+      ...updatedOrder,
+      orderItems: updatedOrder.orderItems.map((item: any) => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    };
+
+    return NextResponse.json(serializedOrder);
   } catch (error) {
     console.error("更新订单错误:", error);
     return NextResponse.json(
@@ -122,14 +155,13 @@ export async function PATCH(
   }
 }
 
-// 删除订单
+// DELETE /api/orders/[id] - 删除订单组
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
-    const { id } = await params;
 
     if (!session) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -143,24 +175,26 @@ export async function DELETE(
       return NextResponse.json({ error: "账号未审核" }, { status: 403 });
     }
 
-    const order = await prisma.reagentOrder.findUnique({
+    const { id } = await params;
+
+    const existingOrder = await prisma.orderGroup.findUnique({
       where: { id },
     });
 
-    if (!order) {
+    if (!existingOrder) {
       return NextResponse.json({ error: "订单不存在" }, { status: 404 });
     }
 
-    // 学生只能删除自己的订单，管理员可以删除所有订单
-    if (user.role !== "ADMIN" && order.userId !== user.id) {
-      return NextResponse.json({ error: "无权限删除" }, { status: 403 });
+    // 权限检查：学生只能删除自己的订单，管理员可以删除所有
+    if (user.role !== "ADMIN" && existingOrder.userId !== user.id) {
+      return NextResponse.json({ error: "无权操作" }, { status: 403 });
     }
 
-    await prisma.reagentOrder.delete({
+    await prisma.orderGroup.delete({
       where: { id },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ message: "删除成功" });
   } catch (error) {
     console.error("删除订单错误:", error);
     return NextResponse.json(

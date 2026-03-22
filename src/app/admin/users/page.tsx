@@ -10,19 +10,33 @@ export default async function UserManagementPage() {
     redirect("/login");
   }
 
-  // 检查是否为管理员
   const user = await prisma.user.findUnique({
     where: { id: session.user?.id },
   });
 
-  if (user?.role !== "ADMIN") {
+  if (!user?.isApproved) {
+    redirect("/pending");
+  }
+
+  if (user.role !== "ADMIN") {
     redirect("/dashboard");
   }
 
   // 获取所有用户
   const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      isApproved: true,
+      createdAt: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 
-  return <UserManagementView users={JSON.parse(JSON.stringify(users))} />;
+  return (
+    <UserManagementView
+      users={JSON.parse(JSON.stringify(users))}
+    />
+  );
 }
