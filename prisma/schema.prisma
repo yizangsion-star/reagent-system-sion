@@ -51,8 +51,15 @@ model OrderGroup {
   supplierName  String        // 公司名称，如"诺唯赞"、"生工"、"Thermo"
   
   // 发票信息（挂在供应商子项层级）
+  // 原有的统一发票号（保留向后兼容）
   invoiceNumber String?       // 发票号（可选）
   invoiceDate   DateTime?     // 开票日期（可选）
+  
+  // 新增：按试剂类型分离的发票信息
+  publicInvoiceNumber  String?   // 公共试剂发票号
+  publicInvoiceDate    DateTime? // 公共试剂开票日期
+  personalInvoiceNumber String?  // 个人试剂发票号
+  personalInvoiceDate   DateTime? // 个人试剂开票日期
   
   // 核查与报销状态（在供应商子项层级管理）
   isVerified    Boolean       @default(false)   // 是否已核查

@@ -104,27 +104,35 @@ export async function PUT(
     // 学生只能更新发票信息，管理员可以更新核查/报销状态
     const updateData: any = {};
     
+    // 原有的统一发票字段（向后兼容）
+    if (body.invoiceNumber !== undefined) {
+      updateData.invoiceNumber = body.invoiceNumber;
+    }
+    if (body.invoiceDate !== undefined) {
+      updateData.invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : null;
+    }
+    
+    // 新增：按类型分离的发票字段
+    if (body.publicInvoiceNumber !== undefined) {
+      updateData.publicInvoiceNumber = body.publicInvoiceNumber;
+    }
+    if (body.publicInvoiceDate !== undefined) {
+      updateData.publicInvoiceDate = body.publicInvoiceDate ? new Date(body.publicInvoiceDate) : null;
+    }
+    if (body.personalInvoiceNumber !== undefined) {
+      updateData.personalInvoiceNumber = body.personalInvoiceNumber;
+    }
+    if (body.personalInvoiceDate !== undefined) {
+      updateData.personalInvoiceDate = body.personalInvoiceDate ? new Date(body.personalInvoiceDate) : null;
+    }
+    
+    // 管理员可以更新核查/报销状态
     if (user.role === "ADMIN") {
-      // 管理员可以更新所有字段
-      if (body.invoiceNumber !== undefined) {
-        updateData.invoiceNumber = body.invoiceNumber;
-      }
-      if (body.invoiceDate !== undefined) {
-        updateData.invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : null;
-      }
       if (body.isVerified !== undefined) {
         updateData.isVerified = body.isVerified;
       }
       if (body.isReimbursed !== undefined) {
         updateData.isReimbursed = body.isReimbursed;
-      }
-    } else {
-      // 学生只能更新发票信息
-      if (body.invoiceNumber !== undefined) {
-        updateData.invoiceNumber = body.invoiceNumber;
-      }
-      if (body.invoiceDate !== undefined) {
-        updateData.invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : null;
       }
     }
 

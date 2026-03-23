@@ -12,8 +12,14 @@ interface OrderGroup {
   userId: string;
   month: string;
   supplierName: string;
+  // 原有的统一发票号（向后兼容）
   invoiceNumber: string | null;
   invoiceDate: string | null;
+  // 新增：按类型分离的发票字段
+  publicInvoiceNumber?: string | null;
+  publicInvoiceDate?: string | null;
+  personalInvoiceNumber?: string | null;
+  personalInvoiceDate?: string | null;
   isVerified: boolean;
   isReimbursed: boolean;
   createdAt: string;
@@ -190,9 +196,11 @@ export default function DashboardView({
     setShowAddItemModal(true);
   };
 
-  // 打开填写发票弹窗
-  const openInvoiceModal = (group: OrderGroup) => {
+  // 打开填写发票弹窗（支持按类型填写）
+  const [invoiceType, setInvoiceType] = useState<"PUBLIC_REAGENT" | "PERSONAL_REAGENT" | null>(null);
+  const openInvoiceModal = (group: OrderGroup, type?: "PUBLIC_REAGENT" | "PERSONAL_REAGENT") => {
     setSelectedGroup(group);
+    setInvoiceType(type || null);
     setShowInvoiceModal(true);
   };
 
@@ -345,14 +353,23 @@ export default function DashboardView({
       {showInvoiceModal && selectedGroup && (
         <InvoiceModal
           group={selectedGroup}
-          totalAmount={calculateTotal(selectedGroup)}
+          type={invoiceType}
+          totalAmount={
+            invoiceType === "PUBLIC_REAGENT" 
+              ? selectedGroup.orderItems.filter(i => i.type === "PUBLIC_REAGENT").reduce((s, i) => s + i.price, 0)
+              : invoiceType === "PERSONAL_REAGENT"
+              ? selectedGroup.orderItems.filter(i => i.type === "PERSONAL_REAGENT").reduce((s, i) => s + i.price, 0)
+              : calculateTotal(selectedGroup)
+          }
           onClose={() => {
             setShowInvoiceModal(false);
             setSelectedGroup(null);
+            setInvoiceType(null);
           }}
           onSuccess={() => {
             setShowInvoiceModal(false);
             setSelectedGroup(null);
+            setInvoiceType(null);
             loadOrderGroups();
           }}
         />
@@ -880,32 +897,58 @@ function AddItemModal({ group, onClose, onSuccess }: AddItemModalProps) {
   );
 }
 
-// 填写发票弹窗
+// 填写发票弹窗（支持按类型填写）
 interface InvoiceModalProps {
   group: OrderGroup;
+  type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT" | null;
   totalAmount: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalProps) {
-  const [invoiceNumber, setInvoiceNumber] = useState(group.invoiceNumber || "");
+function InvoiceModal({ group, type, totalAmount, onClose, onSuccess }: InvoiceModalProps) {
+  // 根据类型获取初始值
+  const isPublic = type === "PUBLIC_REAGENT";
+  const isPersonal = type === "PERSONAL_REAGENT";
+  
+  const [invoiceNumber, setInvoiceNumber] = useState(
+    isPublic ? (group.publicInvoiceNumber || "") : 
+    isPersonal ? (group.personalInvoiceNumber || "") : 
+    (group.invoiceNumber || "")
+  );
   const [invoiceDate, setInvoiceDate] = useState(
-    group.invoiceDate ? group.invoiceDate.split("T")[0] : ""
+    isPublic ? (group.publicInvoiceDate ? group.publicInvoiceDate.split("T")[0] : "") :
+    isPersonal ? (group.personalInvoiceDate ? group.personalInvoiceDate.split("T")[0] : "") :
+    (group.invoiceDate ? group.invoiceDate.split("T")[0] : "")
   );
   const [loading, setLoading] = useState(false);
+
+  // 标题和金额显示
+  const typeLabel = isPublic ? "公共试剂" : isPersonal ? "个人试剂" : "";
+  const typeColor = isPublic ? "text-purple-700" : isPersonal ? "text-orange-700" : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      // 根据类型构建请求体
+      const body: any = {};
+      if (isPublic) {
+        body.publicInvoiceNumber = invoiceNumber || null;
+        body.publicInvoiceDate = invoiceDate || null;
+      } else if (isPersonal) {
+        body.personalInvoiceNumber = invoiceNumber || null;
+        body.personalInvoiceDate = invoiceDate || null;
+      } else {
+        // 统一发票（向后兼容）
+        body.invoiceNumber = invoiceNumber || null;
+        body.invoiceDate = invoiceDate || null;
+      }
+
       const res = await fetch(`/api/orders/${group.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceNumber: invoiceNumber || null,
-          invoiceDate: invoiceDate || null,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
@@ -926,17 +969,23 @@ function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalPr
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg max-w-md w-full">
         <div className="p-6">
-          <h2 className="text-xl font-bold mb-1">填写发票信息</h2>
+          <h2 className="text-xl font-bold mb-1">
+            填写{typeLabel ? `${typeLabel}` : ""}发票信息
+          </h2>
           <p className="text-sm text-gray-500 mb-4">供应商：{group.supplierName}</p>
 
           {/* 金额核对提示 */}
-          <div className="mb-4 p-3 bg-blue-50 rounded text-sm">
+          <div className={`mb-4 p-3 rounded text-sm ${isPublic ? 'bg-purple-50' : isPersonal ? 'bg-orange-50' : 'bg-blue-50'}`}>
             <div className="flex justify-between mb-1">
-              <span className="text-gray-600">订单总金额：</span>
-              <span className="font-bold text-blue-900">¥{totalAmount.toFixed(2)}</span>
+              <span className="text-gray-600">
+                {typeLabel ? `${typeLabel}金额：` : "订单总金额："}
+              </span>
+              <span className={`font-bold ${typeColor || 'text-blue-900'}`}>
+                ¥{totalAmount.toFixed(2)}
+              </span>
             </div>
-            <p className="text-blue-700 text-xs mt-1">
-              请核对发票金额是否与订单金额一致
+            <p className={`text-xs mt-1 ${isPublic ? 'text-purple-700' : isPersonal ? 'text-orange-700' : 'text-blue-700'}`}>
+              请核对发票金额是否与{typeLabel ? "该类型" : "订单"}金额一致
             </p>
           </div>
 
@@ -990,52 +1039,94 @@ function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalPr
 }
 
 
-// 试剂明细按类型分组展示组件
+// 试剂明细按类型分组展示组件（支持独立发票）
 interface OrderItemsByTypeProps {
-  items: OrderItem[];
+  group: OrderGroup;
   formatDate: (date: string | null) => string;
   formatMoney: (amount: number) => string;
+  onEditInvoice: (group: OrderGroup, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT") => void;
 }
 
-function OrderItemsByType({ items, formatDate, formatMoney }: OrderItemsByTypeProps) {
+function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: OrderItemsByTypeProps) {
   // 按类型分组
-  const publicItems = items.filter(item => item.type === "PUBLIC_REAGENT");
-  const personalItems = items.filter(item => item.type === "PERSONAL_REAGENT");
+  const publicItems = group.orderItems.filter(item => item.type === "PUBLIC_REAGENT");
+  const personalItems = group.orderItems.filter(item => item.type === "PERSONAL_REAGENT");
   
   // 计算各类型小计
   const publicTotal = publicItems.reduce((sum, item) => sum + item.price, 0);
   const personalTotal = personalItems.reduce((sum, item) => sum + item.price, 0);
   const grandTotal = publicTotal + personalTotal;
 
-  const renderItemTable = (
+  const renderTypeSection = (
     typeItems: OrderItem[],
+    type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT",
     typeLabel: string,
     typeColor: string,
     bgColor: string,
-    total: number
+    borderColor: string,
+    total: number,
+    invoiceNumber: string | null | undefined,
+    invoiceDate: string | null | undefined
   ) => {
     if (typeItems.length === 0) return null;
 
+    const hasInvoice = invoiceNumber || invoiceDate;
+
     return (
-      <div className={`rounded border overflow-hidden ${bgColor}`}>
-        {/* 类型标题 */}
-        <div className={`px-3 py-2 font-medium text-sm ${typeColor} border-b`}>
-          {typeLabel} · {typeItems.length} 项
+      <div className={`rounded-lg border-2 overflow-hidden ${borderColor} ${bgColor}`}>
+        {/* 类型头部：显示类型名称、金额、填写发票按钮 */}
+        <div className={`px-4 py-3 border-b ${borderColor} flex justify-between items-center`}>
+          <div className="flex items-center gap-3">
+            <span className={`font-bold text-base ${typeColor}`}>{typeLabel}</span>
+            <span className="text-gray-500 text-sm">· {typeItems.length} 项</span>
+            <span className={`font-bold ${typeColor}`}>小计：{formatMoney(total)}</span>
+          </div>
+          <button
+            onClick={() => onEditInvoice(group, type)}
+            className={`px-3 py-1.5 text-sm rounded transition-colors flex items-center gap-1 ${
+              hasInvoice
+                ? "bg-white text-gray-700 hover:bg-gray-50 border"
+                : "bg-white text-amber-600 hover:bg-amber-50 border border-amber-300"
+            }`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {hasInvoice ? "修改发票" : "填写发票"}
+          </button>
         </div>
-        <table className="w-full text-sm">
+
+        {/* 发票信息显示 */}
+        <div className="px-4 py-2 bg-white border-b border-gray-100 flex gap-6 text-sm">
+          <span className="text-gray-500">
+            发票号：
+            <span className={invoiceNumber ? "text-gray-900 font-medium" : "text-amber-600"}>
+              {invoiceNumber || "待填写"}
+            </span>
+          </span>
+          <span className="text-gray-500">
+            开票日期：
+            <span className={invoiceDate ? "text-gray-900 font-medium" : "text-amber-600"}>
+              {formatDate(invoiceDate || null)}
+            </span>
+          </span>
+        </div>
+        
+        {/* 试剂明细表格 */}
+        <table className="w-full text-sm bg-white">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-2 text-left text-gray-600 font-medium text-xs">订购日期</th>
-              <th className="px-3 py-2 text-left text-gray-600 font-medium text-xs">试剂名称</th>
-              <th className="px-3 py-2 text-right text-gray-600 font-medium text-xs">价格</th>
+              <th className="px-4 py-2 text-left text-gray-600 font-medium text-xs">订购日期</th>
+              <th className="px-4 py-2 text-left text-gray-600 font-medium text-xs">试剂名称</th>
+              <th className="px-4 py-2 text-right text-gray-600 font-medium text-xs">价格</th>
             </tr>
           </thead>
           <tbody>
             {typeItems.map((item) => (
-              <tr key={item.id} className="border-t bg-white">
-                <td className="px-3 py-2 text-gray-600">{formatDate(item.orderDate)}</td>
-                <td className="px-3 py-2 text-gray-900">{item.reagentName}</td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900">
+              <tr key={item.id} className="border-t">
+                <td className="px-4 py-2 text-gray-600">{formatDate(item.orderDate)}</td>
+                <td className="px-4 py-2 text-gray-900">{item.reagentName}</td>
+                <td className="px-4 py-2 text-right font-medium text-gray-900">
                   {formatMoney(item.price)}
                 </td>
               </tr>
@@ -1043,10 +1134,10 @@ function OrderItemsByType({ items, formatDate, formatMoney }: OrderItemsByTypePr
           </tbody>
           <tfoot className={`${bgColor}`}>
             <tr>
-              <td colSpan={2} className="px-3 py-2 text-right text-gray-600 text-xs">
+              <td colSpan={2} className="px-4 py-2 text-right text-gray-600 text-xs">
                 {typeLabel}小计：
               </td>
-              <td className="px-3 py-2 text-right font-bold text-gray-900">
+              <td className="px-4 py-2 text-right font-bold text-gray-900">
                 {formatMoney(total)}
               </td>
             </tr>
@@ -1057,28 +1148,36 @@ function OrderItemsByType({ items, formatDate, formatMoney }: OrderItemsByTypePr
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* 公共试剂区块 */}
-      {renderItemTable(
+      {renderTypeSection(
         publicItems,
+        "PUBLIC_REAGENT",
         "公共试剂",
-        "text-purple-700 bg-purple-50",
+        "text-purple-700",
+        "bg-purple-50",
         "border-purple-200",
-        publicTotal
+        publicTotal,
+        group.publicInvoiceNumber,
+        group.publicInvoiceDate
       )}
       
       {/* 个人试剂区块 */}
-      {renderItemTable(
+      {renderTypeSection(
         personalItems,
+        "PERSONAL_REAGENT",
         "个人试剂",
-        "text-orange-700 bg-orange-50",
+        "text-orange-700",
+        "bg-orange-50",
         "border-orange-200",
-        personalTotal
+        personalTotal,
+        group.personalInvoiceNumber,
+        group.personalInvoiceDate
       )}
       
       {/* 总计 */}
-      <div className="flex justify-end items-center py-2 px-3 bg-gray-100 rounded">
-        <span className="text-gray-600 text-sm mr-2">总计：</span>
+      <div className="flex justify-end items-center py-3 px-4 bg-gray-100 rounded-lg">
+        <span className="text-gray-600 mr-2">该学生订单总计：</span>
         <span className="text-xl font-bold text-gray-900">{formatMoney(grandTotal)}</span>
       </div>
     </div>
@@ -1088,7 +1187,7 @@ function OrderItemsByType({ items, formatDate, formatMoney }: OrderItemsByTypePr
 // 管理员分组视图组件（公司 -> 学生 -> 订单明细）
 interface AdminGroupedViewProps {
   supplierGroups: SupplierGroups;
-  onEditInvoice: (group: OrderGroup) => void;
+  onEditInvoice: (group: OrderGroup, type?: "PUBLIC_REAGENT" | "PERSONAL_REAGENT") => void;
   onToggleVerified: (groupId: string, currentStatus: boolean) => void;
   onToggleReimbursed: (groupId: string, currentStatus: boolean) => void;
   onDelete: (groupId: string) => void;
@@ -1284,28 +1383,13 @@ function AdminGroupedView({
                       </div>
                     </div>
 
-                    {/* 试剂明细 - 按类型分组显示 */}
+                    {/* 试剂明细 - 按类型分组显示，支持独立发票 */}
                     <OrderItemsByType
-                      items={group.orderItems}
+                      group={group}
                       formatDate={formatDate}
                       formatMoney={formatMoney}
+                      onEditInvoice={onEditInvoice}
                     />
-
-                    {/* 发票信息 */}
-                    <div className="mt-2 flex gap-4 text-sm">
-                      <span className="text-gray-500">
-                        发票号：
-                        <span className={group.invoiceNumber ? "text-gray-900" : "text-amber-600"}>
-                          {group.invoiceNumber || "待填写"}
-                        </span>
-                      </span>
-                      <span className="text-gray-500">
-                        开票日期：
-                        <span className={group.invoiceDate ? "text-gray-900" : "text-amber-600"}>
-                          {formatDate(group.invoiceDate)}
-                        </span>
-                      </span>
-                    </div>
                   </div>
                 ))}
               </div>
