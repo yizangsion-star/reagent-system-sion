@@ -62,8 +62,15 @@ model OrderGroup {
   personalInvoiceDate   DateTime? // 个人试剂开票日期
   
   // 核查与报销状态（在供应商子项层级管理）
+  // 原有的整体状态（向后兼容）
   isVerified    Boolean       @default(false)   // 是否已核查
   isReimbursed  Boolean       @default(false)   // 是否已报销
+  
+  // 新增：按类型分离的核查/报销状态
+  isPublicVerified      Boolean @default(false) // 公共试剂已核查
+  isPublicReimbursed    Boolean @default(false) // 公共试剂已报销
+  isPersonalVerified    Boolean @default(false) // 个人试剂已核查
+  isPersonalReimbursed  Boolean @default(false) // 个人试剂已报销
   
   // 时间戳
   createdAt     DateTime      @default(now())

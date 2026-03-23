@@ -20,8 +20,14 @@ interface OrderGroup {
   publicInvoiceDate?: string | null;
   personalInvoiceNumber?: string | null;
   personalInvoiceDate?: string | null;
+  // 原有的整体状态（向后兼容）
   isVerified: boolean;
   isReimbursed: boolean;
+  // 新增：按类型分离的核查/报销状态
+  isPublicVerified?: boolean;
+  isPublicReimbursed?: boolean;
+  isPersonalVerified?: boolean;
+  isPersonalReimbursed?: boolean;
   createdAt: string;
   updatedAt: string;
   user?: {
@@ -150,6 +156,44 @@ export default function DashboardView({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isReimbursed: !currentStatus }),
+      });
+      if (res.ok) {
+        loadOrderGroups();
+      }
+    } catch (error) {
+      console.error("更新报销状态失败:", error);
+    }
+  };
+
+  // 处理按类型核查状态切换
+  const toggleTypeVerified = async (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => {
+    try {
+      const body = type === "PUBLIC_REAGENT" 
+        ? { isPublicVerified: !currentStatus }
+        : { isPersonalVerified: !currentStatus };
+      const res = await fetch(`/api/orders/${groupId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        loadOrderGroups();
+      }
+    } catch (error) {
+      console.error("更新核查状态失败:", error);
+    }
+  };
+
+  // 处理按类型报销状态切换
+  const toggleTypeReimbursed = async (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => {
+    try {
+      const body = type === "PUBLIC_REAGENT" 
+        ? { isPublicReimbursed: !currentStatus }
+        : { isPersonalReimbursed: !currentStatus };
+      const res = await fetch(`/api/orders/${groupId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         loadOrderGroups();
@@ -291,6 +335,8 @@ export default function DashboardView({
                 onEditInvoice={openInvoiceModal}
                 onToggleVerified={toggleVerified}
                 onToggleReimbursed={toggleReimbursed}
+                onToggleTypeVerified={toggleTypeVerified}
+                onToggleTypeReimbursed={toggleTypeReimbursed}
                 onDelete={deleteOrderGroup}
                 formatDate={formatDate}
                 formatMoney={formatMoney}
@@ -1039,15 +1085,24 @@ function InvoiceModal({ group, type, totalAmount, onClose, onSuccess }: InvoiceM
 }
 
 
-// 试剂明细按类型分组展示组件（支持独立发票）
+// 试剂明细按类型分组展示组件（支持独立发票和核查/报销）
 interface OrderItemsByTypeProps {
   group: OrderGroup;
   formatDate: (date: string | null) => string;
   formatMoney: (amount: number) => string;
   onEditInvoice: (group: OrderGroup, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT") => void;
+  onToggleTypeVerified: (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => void;
+  onToggleTypeReimbursed: (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => void;
 }
 
-function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: OrderItemsByTypeProps) {
+function OrderItemsByType({ 
+  group, 
+  formatDate, 
+  formatMoney, 
+  onEditInvoice,
+  onToggleTypeVerified,
+  onToggleTypeReimbursed,
+}: OrderItemsByTypeProps) {
   // 按类型分组
   const publicItems = group.orderItems.filter(item => item.type === "PUBLIC_REAGENT");
   const personalItems = group.orderItems.filter(item => item.type === "PERSONAL_REAGENT");
@@ -1066,7 +1121,9 @@ function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: Ord
     borderColor: string,
     total: number,
     invoiceNumber: string | null | undefined,
-    invoiceDate: string | null | undefined
+    invoiceDate: string | null | undefined,
+    isVerified: boolean | undefined,
+    isReimbursed: boolean | undefined
   ) => {
     if (typeItems.length === 0) return null;
 
@@ -1074,26 +1131,74 @@ function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: Ord
 
     return (
       <div className={`rounded-lg border-2 overflow-hidden ${borderColor} ${bgColor}`}>
-        {/* 类型头部：显示类型名称、金额、填写发票按钮 */}
-        <div className={`px-4 py-3 border-b ${borderColor} flex justify-between items-center`}>
-          <div className="flex items-center gap-3">
-            <span className={`font-bold text-base ${typeColor}`}>{typeLabel}</span>
-            <span className="text-gray-500 text-sm">· {typeItems.length} 项</span>
-            <span className={`font-bold ${typeColor}`}>小计：{formatMoney(total)}</span>
+        {/* 类型头部：显示类型名称、金额、状态徽章和操作按钮 */}
+        <div className={`px-4 py-3 border-b ${borderColor}`}>
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-3">
+              <span className={`font-bold text-base ${typeColor}`}>{typeLabel}</span>
+              <span className="text-gray-500 text-sm">· {typeItems.length} 项</span>
+              <span className={`font-bold ${typeColor}`}>小计：{formatMoney(total)}</span>
+            </div>
+            {/* 状态徽章 */}
+            <div className="flex gap-2">
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                isVerified
+                  ? "bg-green-100 text-green-700"
+                  : "bg-yellow-100 text-yellow-700"
+              }`}>
+                {isVerified ? "已核查" : "待核查"}
+              </span>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                isReimbursed
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-gray-100 text-gray-700"
+              }`}>
+                {isReimbursed ? "已报销" : "未报销"}
+              </span>
+            </div>
           </div>
-          <button
-            onClick={() => onEditInvoice(group, type)}
-            className={`px-3 py-1.5 text-sm rounded transition-colors flex items-center gap-1 ${
-              hasInvoice
-                ? "bg-white text-gray-700 hover:bg-gray-50 border"
-                : "bg-white text-amber-600 hover:bg-amber-50 border border-amber-300"
-            }`}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            {hasInvoice ? "修改发票" : "填写发票"}
-          </button>
+          
+          {/* 操作按钮行 */}
+          <div className="flex justify-end items-center gap-2">
+            {/* 填写发票按钮 */}
+            <button
+              onClick={() => onEditInvoice(group, type)}
+              className={`px-3 py-1.5 text-sm rounded transition-colors flex items-center gap-1 ${
+                hasInvoice
+                  ? "bg-white text-gray-700 hover:bg-gray-50 border"
+                  : "bg-white text-amber-600 hover:bg-amber-50 border border-amber-300"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {hasInvoice ? "修改发票" : "填写发票"}
+            </button>
+
+            {/* 核查按钮 */}
+            <button
+              onClick={() => onToggleTypeVerified(group.id, type, isVerified || false)}
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                isVerified
+                  ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  : "bg-green-600 text-white hover:bg-green-700"
+              }`}
+            >
+              {isVerified ? "取消核查" : "确认核查"}
+            </button>
+
+            {/* 报销按钮 */}
+            <button
+              onClick={() => onToggleTypeReimbursed(group.id, type, isReimbursed || false)}
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                isReimbursed
+                  ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              {isReimbursed ? "取消报销" : "确认报销"}
+            </button>
+          </div>
         </div>
 
         {/* 发票信息显示 */}
@@ -1159,7 +1264,9 @@ function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: Ord
         "border-purple-200",
         publicTotal,
         group.publicInvoiceNumber,
-        group.publicInvoiceDate
+        group.publicInvoiceDate,
+        group.isPublicVerified,
+        group.isPublicReimbursed
       )}
       
       {/* 个人试剂区块 */}
@@ -1172,7 +1279,9 @@ function OrderItemsByType({ group, formatDate, formatMoney, onEditInvoice }: Ord
         "border-orange-200",
         personalTotal,
         group.personalInvoiceNumber,
-        group.personalInvoiceDate
+        group.personalInvoiceDate,
+        group.isPersonalVerified,
+        group.isPersonalReimbursed
       )}
       
       {/* 总计 */}
@@ -1190,6 +1299,8 @@ interface AdminGroupedViewProps {
   onEditInvoice: (group: OrderGroup, type?: "PUBLIC_REAGENT" | "PERSONAL_REAGENT") => void;
   onToggleVerified: (groupId: string, currentStatus: boolean) => void;
   onToggleReimbursed: (groupId: string, currentStatus: boolean) => void;
+  onToggleTypeVerified: (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => void;
+  onToggleTypeReimbursed: (groupId: string, type: "PUBLIC_REAGENT" | "PERSONAL_REAGENT", currentStatus: boolean) => void;
   onDelete: (groupId: string) => void;
   formatDate: (date: string | null) => string;
   formatMoney: (amount: number) => string;
@@ -1202,6 +1313,8 @@ function AdminGroupedView({
   onEditInvoice,
   onToggleVerified,
   onToggleReimbursed,
+  onToggleTypeVerified,
+  onToggleTypeReimbursed,
   onDelete,
   formatDate,
   formatMoney,
@@ -1383,12 +1496,14 @@ function AdminGroupedView({
                       </div>
                     </div>
 
-                    {/* 试剂明细 - 按类型分组显示，支持独立发票 */}
+                    {/* 试剂明细 - 按类型分组显示，支持独立发票和核查/报销 */}
                     <OrderItemsByType
                       group={group}
                       formatDate={formatDate}
                       formatMoney={formatMoney}
                       onEditInvoice={onEditInvoice}
+                      onToggleTypeVerified={onToggleTypeVerified}
+                      onToggleTypeReimbursed={onToggleTypeReimbursed}
                     />
                   </div>
                 ))}

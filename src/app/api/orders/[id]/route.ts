@@ -128,11 +128,26 @@ export async function PUT(
     
     // 管理员可以更新核查/报销状态
     if (user.role === "ADMIN") {
+      // 原有的整体状态（向后兼容）
       if (body.isVerified !== undefined) {
         updateData.isVerified = body.isVerified;
       }
       if (body.isReimbursed !== undefined) {
         updateData.isReimbursed = body.isReimbursed;
+      }
+      
+      // 新增：按类型分离的核查/报销状态
+      if (body.isPublicVerified !== undefined) {
+        updateData.isPublicVerified = body.isPublicVerified;
+      }
+      if (body.isPublicReimbursed !== undefined) {
+        updateData.isPublicReimbursed = body.isPublicReimbursed;
+      }
+      if (body.isPersonalVerified !== undefined) {
+        updateData.isPersonalVerified = body.isPersonalVerified;
+      }
+      if (body.isPersonalReimbursed !== undefined) {
+        updateData.isPersonalReimbursed = body.isPersonalReimbursed;
       }
     }
 
