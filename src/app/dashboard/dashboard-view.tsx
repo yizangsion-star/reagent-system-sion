@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { Session } from "next-auth";
 import { Navbar } from "@/components/navbar";
 
+// 按供应商分组的数据结构
+type SupplierGroups = Map<string, OrderGroup[]>;
+
 interface OrderGroup {
   id: string;
   userId: string;
@@ -165,6 +168,22 @@ export default function DashboardView({
     }
   };
 
+  // 按供应商分组数据（用于管理员查看所有学生时）
+  const groupBySupplier = (groups: OrderGroup[]): SupplierGroups => {
+    const map: SupplierGroups = new Map();
+    groups.forEach(group => {
+      const existing = map.get(group.supplierName) || [];
+      existing.push(group);
+      map.set(group.supplierName, existing);
+    });
+    return map;
+  };
+
+  // 计算供应商总金额
+  const calculateSupplierTotal = (groups: OrderGroup[]) => {
+    return groups.reduce((sum, group) => sum + calculateTotal(group), 0);
+  };
+
   // 打开添加明细弹窗
   const openAddItemModal = (group: OrderGroup) => {
     setSelectedGroup(group);
@@ -257,21 +276,38 @@ export default function DashboardView({
           </div>
         ) : (
           <div className="grid gap-6">
-            {orderGroups.map((group) => (
-              <SupplierCard
-                key={group.id}
-                group={group}
-                userRole={userRole}
-                onAddItem={() => openAddItemModal(group)}
-                onEditInvoice={() => openInvoiceModal(group)}
-                onToggleVerified={() => toggleVerified(group.id, group.isVerified)}
-                onToggleReimbursed={() => toggleReimbursed(group.id, group.isReimbursed)}
-                onDelete={() => deleteOrderGroup(group.id)}
+            {/* 管理员查看所有学生：按公司分组显示 */}
+            {userRole === "ADMIN" && !selectedUserId ? (
+              <AdminGroupedView
+                supplierGroups={groupBySupplier(orderGroups)}
+                onEditInvoice={openInvoiceModal}
+                onToggleVerified={toggleVerified}
+                onToggleReimbursed={toggleReimbursed}
+                onDelete={deleteOrderGroup}
                 formatDate={formatDate}
                 formatMoney={formatMoney}
                 calculateTotal={calculateTotal}
+                calculateSupplierTotal={calculateSupplierTotal}
               />
-            ))}
+            ) : (
+              /* 学生视角或管理员查看特定学生：平铺显示 */
+              orderGroups.map((group) => (
+                <SupplierCard
+                  key={group.id}
+                  group={group}
+                  userRole={userRole}
+                  showStudentName={!!selectedUserId && userRole === "ADMIN"}
+                  onAddItem={() => openAddItemModal(group)}
+                  onEditInvoice={() => openInvoiceModal(group)}
+                  onToggleVerified={() => toggleVerified(group.id, group.isVerified)}
+                  onToggleReimbursed={() => toggleReimbursed(group.id, group.isReimbursed)}
+                  onDelete={() => deleteOrderGroup(group.id)}
+                  formatDate={formatDate}
+                  formatMoney={formatMoney}
+                  calculateTotal={calculateTotal}
+                />
+              ))
+            )}
           </div>
         )}
       </div>
@@ -329,7 +365,8 @@ export default function DashboardView({
 interface SupplierCardProps {
   group: OrderGroup;
   userRole: string;
-  onAddItem: () => void;
+  showStudentName?: boolean;
+  onAddItem?: () => void;
   onEditInvoice: () => void;
   onToggleVerified: () => void;
   onToggleReimbursed: () => void;
@@ -342,6 +379,7 @@ interface SupplierCardProps {
 function SupplierCard({
   group,
   userRole,
+  showStudentName = false,
   onAddItem,
   onEditInvoice,
   onToggleVerified,
@@ -361,6 +399,11 @@ function SupplierCard({
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-3">
+              {showStudentName && group.user && (
+                <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm font-medium">
+                  {group.user.username}
+                </span>
+              )}
               <h3 className="font-semibold text-lg text-gray-900">{group.supplierName}</h3>
               {/* 状态徽章 */}
               <div className="flex items-center gap-2">
@@ -942,6 +985,276 @@ function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalPr
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// 管理员分组视图组件（公司 -> 学生 -> 订单明细）
+interface AdminGroupedViewProps {
+  supplierGroups: SupplierGroups;
+  onEditInvoice: (group: OrderGroup) => void;
+  onToggleVerified: (groupId: string, currentStatus: boolean) => void;
+  onToggleReimbursed: (groupId: string, currentStatus: boolean) => void;
+  onDelete: (groupId: string) => void;
+  formatDate: (date: string | null) => string;
+  formatMoney: (amount: number) => string;
+  calculateTotal: (group: OrderGroup) => number;
+  calculateSupplierTotal: (groups: OrderGroup[]) => number;
+}
+
+function AdminGroupedView({
+  supplierGroups,
+  onEditInvoice,
+  onToggleVerified,
+  onToggleReimbursed,
+  onDelete,
+  formatDate,
+  formatMoney,
+  calculateTotal,
+  calculateSupplierTotal,
+}: AdminGroupedViewProps) {
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (supplierName: string) => {
+    const newExpanded = new Set(expandedSuppliers);
+    if (newExpanded.has(supplierName)) {
+      newExpanded.delete(supplierName);
+    } else {
+      newExpanded.add(supplierName);
+    }
+    setExpandedSuppliers(newExpanded);
+  };
+
+  // 默认展开所有
+  useEffect(() => {
+    setExpandedSuppliers(new Set(supplierGroups.keys()));
+  }, [supplierGroups]);
+
+  const sortedSuppliers = Array.from(supplierGroups.entries()).sort(
+    ([nameA], [nameB]) => nameA.localeCompare(nameB, "zh-CN")
+  );
+
+  return (
+    <div className="space-y-4">
+      {sortedSuppliers.map(([supplierName, groups]) => {
+        const supplierTotal = calculateSupplierTotal(groups);
+        const isExpanded = expandedSuppliers.has(supplierName);
+        const allVerified = groups.every(g => g.isVerified);
+        const allReimbursed = groups.every(g => g.isReimbursed);
+
+        return (
+          <div key={supplierName} className="bg-white rounded-lg shadow border overflow-hidden">
+            {/* 公司维度头部 */}
+            <div
+              className="bg-gradient-to-r from-indigo-50 to-blue-50 px-4 py-4 cursor-pointer hover:from-indigo-100 hover:to-blue-100 transition-colors"
+              onClick={() => toggleExpand(supplierName)}
+            >
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  {/* 展开/折叠图标 */}
+                  <svg
+                    className={`h-5 w-5 text-indigo-600 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  
+                  {/* 公司名称 */}
+                  <div>
+                    <h3 className="text-xl font-bold text-indigo-900">{supplierName}</h3>
+                    <p className="text-sm text-indigo-600 mt-1">
+                      {groups.length} 位学生 · {groups.reduce((sum, g) => sum + g.orderItems.length, 0)} 项试剂
+                    </p>
+                  </div>
+
+                  {/* 整体状态徽章 */}
+                  <div className="flex gap-2">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      allVerified
+                        ? "bg-green-100 text-green-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}>
+                      {allVerified ? "全部已核查" : "有待核查"}
+                    </span>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      allReimbursed
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}>
+                      {allReimbursed ? "全部已报销" : "有待报销"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 公司总金额 */}
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">本月合计</p>
+                  <p className="text-2xl font-bold text-indigo-900">{formatMoney(supplierTotal)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 学生维度列表 */}
+            {isExpanded && (
+              <div className="border-t">
+                {groups.map((group, index) => (
+                  <div
+                    key={group.id}
+                    className={`p-4 ${index !== groups.length - 1 ? "border-b" : ""} hover:bg-gray-50`}
+                  >
+                    {/* 学生区块头部 */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        {/* 学生姓名 - 极其醒目的显示 */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
+                            {group.user?.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-gray-900">{group.user?.username}</p>
+                            <p className="text-sm text-gray-500">{group.orderItems.length} 项试剂</p>
+                          </div>
+                        </div>
+
+                        {/* 个人状态徽章 */}
+                        <div className="flex gap-1 ml-4">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            group.isVerified
+                              ? "bg-green-100 text-green-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}>
+                            {group.isVerified ? "已核查" : "待核查"}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            group.isReimbursed
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}>
+                            {group.isReimbursed ? "已报销" : "未报销"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 个人操作按钮 */}
+                      <div className="flex items-center gap-2">
+                        {/* 填写发票按钮 */}
+                        <button
+                          onClick={() => onEditInvoice(group)}
+                          className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                            group.invoiceNumber
+                              ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              : "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200"
+                          }`}
+                        >
+                          {group.invoiceNumber ? "修改发票" : "填写发票"}
+                        </button>
+
+                        {/* 确认核查按钮 */}
+                        <button
+                          onClick={() => onToggleVerified(group.id, group.isVerified)}
+                          className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                            group.isVerified
+                              ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                              : "bg-green-600 text-white hover:bg-green-700"
+                          }`}
+                        >
+                          {group.isVerified ? "取消核查" : "确认核查"}
+                        </button>
+
+                        {/* 确认报销按钮 */}
+                        <button
+                          onClick={() => onToggleReimbursed(group.id, group.isReimbursed)}
+                          className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                            group.isReimbursed
+                              ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
+                        >
+                          {group.isReimbursed ? "取消报销" : "确认报销"}
+                        </button>
+
+                        {/* 删除按钮 */}
+                        <button
+                          onClick={() => onDelete(group.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="删除该学生的订单"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 试剂明细表格 */}
+                    <div className="bg-white rounded border overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-600 font-medium">订购日期</th>
+                            <th className="px-3 py-2 text-left text-gray-600 font-medium">试剂名称</th>
+                            <th className="px-3 py-2 text-left text-gray-600 font-medium">类型</th>
+                            <th className="px-3 py-2 text-right text-gray-600 font-medium">价格</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.orderItems.map((item) => (
+                            <tr key={item.id} className="border-t">
+                              <td className="px-3 py-2 text-gray-600">{formatDate(item.orderDate)}</td>
+                              <td className="px-3 py-2 text-gray-900">{item.reagentName}</td>
+                              <td className="px-3 py-2">
+                                <span className={`px-2 py-0.5 rounded text-xs ${
+                                  item.type === "PUBLIC_REAGENT"
+                                    ? "bg-purple-100 text-purple-800"
+                                    : "bg-orange-100 text-orange-800"
+                                }`}>
+                                  {item.type === "PUBLIC_REAGENT" ? "公共" : "个人"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium text-gray-900">
+                                {formatMoney(item.price)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-gray-50">
+                          <tr>
+                            <td colSpan={3} className="px-3 py-2 text-right text-gray-600">
+                              小计：
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-gray-900">
+                              {formatMoney(calculateTotal(group))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {/* 发票信息 */}
+                    <div className="mt-2 flex gap-4 text-sm">
+                      <span className="text-gray-500">
+                        发票号：
+                        <span className={group.invoiceNumber ? "text-gray-900" : "text-amber-600"}>
+                          {group.invoiceNumber || "待填写"}
+                        </span>
+                      </span>
+                      <span className="text-gray-500">
+                        开票日期：
+                        <span className={group.invoiceDate ? "text-gray-900" : "text-amber-600"}>
+                          {formatDate(group.invoiceDate)}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

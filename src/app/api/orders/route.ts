@@ -121,29 +121,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 使用 upsert 实现智能创建/更新
-    // 如果该用户在该月份已有该供应商的卡片，则更新；否则创建新卡片
-    const orderGroup = await prisma.orderGroup.upsert({
+    // 查找是否已存在该用户在该月份对该供应商的卡片
+    let orderGroup = await prisma.orderGroup.findFirst({
       where: {
-        userId_month_supplierName: {
-          userId: user.id,
-          month,
-          supplierName,
-        },
-      },
-      update: {
-        // 如果提供了发票信息，则更新
-        ...(invoiceNumber !== undefined && { invoiceNumber: invoiceNumber || null }),
-        ...(invoiceDate !== undefined && { invoiceDate: invoiceDate ? new Date(invoiceDate) : null }),
-      },
-      create: {
         userId: user.id,
         month,
         supplierName,
-        invoiceNumber: invoiceNumber || null,
-        invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
       },
     });
+
+    if (orderGroup) {
+      // 已存在，更新发票信息（如果提供了）
+      if (invoiceNumber !== undefined || invoiceDate !== undefined) {
+        orderGroup = await prisma.orderGroup.update({
+          where: { id: orderGroup.id },
+          data: {
+            ...(invoiceNumber !== undefined && { invoiceNumber: invoiceNumber || null }),
+            ...(invoiceDate !== undefined && { invoiceDate: invoiceDate ? new Date(invoiceDate) : null }),
+          },
+        });
+      }
+    } else {
+      // 不存在，创建新卡片
+      orderGroup = await prisma.orderGroup.create({
+        data: {
+          userId: user.id,
+          month,
+          supplierName,
+          invoiceNumber: invoiceNumber || null,
+          invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+        },
+      });
+    }
 
     // 创建耗材明细（如果有）
     if (orderItems && orderItems.length > 0) {
