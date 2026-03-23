@@ -990,6 +990,101 @@ function InvoiceModal({ group, totalAmount, onClose, onSuccess }: InvoiceModalPr
 }
 
 
+// 试剂明细按类型分组展示组件
+interface OrderItemsByTypeProps {
+  items: OrderItem[];
+  formatDate: (date: string | null) => string;
+  formatMoney: (amount: number) => string;
+}
+
+function OrderItemsByType({ items, formatDate, formatMoney }: OrderItemsByTypeProps) {
+  // 按类型分组
+  const publicItems = items.filter(item => item.type === "PUBLIC_REAGENT");
+  const personalItems = items.filter(item => item.type === "PERSONAL_REAGENT");
+  
+  // 计算各类型小计
+  const publicTotal = publicItems.reduce((sum, item) => sum + item.price, 0);
+  const personalTotal = personalItems.reduce((sum, item) => sum + item.price, 0);
+  const grandTotal = publicTotal + personalTotal;
+
+  const renderItemTable = (
+    typeItems: OrderItem[],
+    typeLabel: string,
+    typeColor: string,
+    bgColor: string,
+    total: number
+  ) => {
+    if (typeItems.length === 0) return null;
+
+    return (
+      <div className={`rounded border overflow-hidden ${bgColor}`}>
+        {/* 类型标题 */}
+        <div className={`px-3 py-2 font-medium text-sm ${typeColor} border-b`}>
+          {typeLabel} · {typeItems.length} 项
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-gray-600 font-medium text-xs">订购日期</th>
+              <th className="px-3 py-2 text-left text-gray-600 font-medium text-xs">试剂名称</th>
+              <th className="px-3 py-2 text-right text-gray-600 font-medium text-xs">价格</th>
+            </tr>
+          </thead>
+          <tbody>
+            {typeItems.map((item) => (
+              <tr key={item.id} className="border-t bg-white">
+                <td className="px-3 py-2 text-gray-600">{formatDate(item.orderDate)}</td>
+                <td className="px-3 py-2 text-gray-900">{item.reagentName}</td>
+                <td className="px-3 py-2 text-right font-medium text-gray-900">
+                  {formatMoney(item.price)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className={`${bgColor}`}>
+            <tr>
+              <td colSpan={2} className="px-3 py-2 text-right text-gray-600 text-xs">
+                {typeLabel}小计：
+              </td>
+              <td className="px-3 py-2 text-right font-bold text-gray-900">
+                {formatMoney(total)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* 公共试剂区块 */}
+      {renderItemTable(
+        publicItems,
+        "公共试剂",
+        "text-purple-700 bg-purple-50",
+        "border-purple-200",
+        publicTotal
+      )}
+      
+      {/* 个人试剂区块 */}
+      {renderItemTable(
+        personalItems,
+        "个人试剂",
+        "text-orange-700 bg-orange-50",
+        "border-orange-200",
+        personalTotal
+      )}
+      
+      {/* 总计 */}
+      <div className="flex justify-end items-center py-2 px-3 bg-gray-100 rounded">
+        <span className="text-gray-600 text-sm mr-2">总计：</span>
+        <span className="text-xl font-bold text-gray-900">{formatMoney(grandTotal)}</span>
+      </div>
+    </div>
+  );
+}
+
 // 管理员分组视图组件（公司 -> 学生 -> 订单明细）
 interface AdminGroupedViewProps {
   supplierGroups: SupplierGroups;
@@ -1189,49 +1284,12 @@ function AdminGroupedView({
                       </div>
                     </div>
 
-                    {/* 试剂明细表格 */}
-                    <div className="bg-white rounded border overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-100">
-                          <tr>
-                            <th className="px-3 py-2 text-left text-gray-600 font-medium">订购日期</th>
-                            <th className="px-3 py-2 text-left text-gray-600 font-medium">试剂名称</th>
-                            <th className="px-3 py-2 text-left text-gray-600 font-medium">类型</th>
-                            <th className="px-3 py-2 text-right text-gray-600 font-medium">价格</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.orderItems.map((item) => (
-                            <tr key={item.id} className="border-t">
-                              <td className="px-3 py-2 text-gray-600">{formatDate(item.orderDate)}</td>
-                              <td className="px-3 py-2 text-gray-900">{item.reagentName}</td>
-                              <td className="px-3 py-2">
-                                <span className={`px-2 py-0.5 rounded text-xs ${
-                                  item.type === "PUBLIC_REAGENT"
-                                    ? "bg-purple-100 text-purple-800"
-                                    : "bg-orange-100 text-orange-800"
-                                }`}>
-                                  {item.type === "PUBLIC_REAGENT" ? "公共" : "个人"}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-right font-medium text-gray-900">
-                                {formatMoney(item.price)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-gray-50">
-                          <tr>
-                            <td colSpan={3} className="px-3 py-2 text-right text-gray-600">
-                              小计：
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-gray-900">
-                              {formatMoney(calculateTotal(group))}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                    {/* 试剂明细 - 按类型分组显示 */}
+                    <OrderItemsByType
+                      items={group.orderItems}
+                      formatDate={formatDate}
+                      formatMoney={formatMoney}
+                    />
 
                     {/* 发票信息 */}
                     <div className="mt-2 flex gap-4 text-sm">
